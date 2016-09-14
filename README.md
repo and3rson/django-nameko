@@ -14,6 +14,12 @@ with get_pool().next() as rpc:
     rpc.mailer.send_mail(foo='bar')
 ```
 
+# Installation
+
+```sh
+pip install django-nameko
+```
+
 # Configuration
 
 ```python
