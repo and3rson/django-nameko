@@ -25,7 +25,7 @@ pip install django-nameko
 ```python
 # Config to be passed to ClusterRpcProxy 
 NAMEKO_CONFIG = { 
-    'AMQP_URL': 'amqp://127.0.0.1:5672/'
+    'AMQP_URI': 'amqp://guest:guest@127.0.0.1:5672/'
 }  
 
 # Number of proxies to create
