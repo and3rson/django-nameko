@@ -5,7 +5,8 @@ import weakref
 from threading import Lock
 
 from six.moves import xrange as xrange_six, queue as queue_six
-
+from nameko.exceptions import RpcConnectionError, RpcTimeout
+from amqp.exceptions import ConnectionError
 from nameko.standalone.rpc import ClusterRpcProxy
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -49,9 +50,20 @@ class ClusterRpcProxyPool(object):
         def __enter__(self):
             return self.rpc
 
-        def __exit__(self, *args, **kwargs):
+        def __exit__(self, exc_type, exc_value, traceback, **kwargs):
             try:
-                self.pool._put_back(self)
+                if exc_type == RuntimeError and (
+                                exc_value == "This consumer has been stopped, and can no longer be used"
+                        or exc_value == "This consumer has been disconnected, and can no longer be used"):
+                    self.pool._clear()
+                    self.pool._reload()  # reload atmost 1 worker
+                    self.stop()
+                elif exc_type in [RpcConnectionError, RpcTimeout, ConnectionError]:
+                    self.pool._clear()
+                    self.pool._reload()  # reload atmost 1 worker
+                    self.stop()
+                else:
+                    self.pool._put_back(self)
             except ReferenceError:  # pragma: no cover
                 # We're detached from the parent, so this context
                 # is going to silently die.
@@ -70,6 +82,29 @@ class ClusterRpcProxyPool(object):
         for i in xrange_six(self.pool_size):
             ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
             self.queue.put(ctx)
+
+    def _clear(self):
+        count = 0
+        while self.queue.empty() is False:
+            self.next()
+            count += 1
+        _logger.debug("Clear %d worker", count)
+
+    def _reload(self, num_of_worker=0):
+        """ Reload into pool's queue with number of new worker
+
+        :param num_of_worker: 
+        :return: 
+        """
+        if num_of_worker <= 0:
+            num_of_worker = self.pool_size
+        count = 0
+        for i in xrange_six(num_of_worker):
+            if self.queue.full() is False:
+                ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
+                self.queue.put_nowait(ctx)
+                count += 1
+        _logger.debug("Reload %d worker", count)
 
     def next(self, timeout=False):
         """ Fetch next connection.
