@@ -30,6 +30,13 @@ NAMEKO_CONFIG = {
 
 # Number of proxies to create
 NAMEKO_POOL_SIZE = 4
+# Set timeout for RPC
+NAMEKO_TIMEOUT = 15  # timeout 15 seconds
+# Add this dictionary to context_data of every RPC
+NAMEKO_CONTEXT_DATA = {
+    'hostname': "my.example.com"
+}
+
 ```
 
 # Credits

@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='django-nameko',
-    version='0.1',
+    version='0.2',
     description=' Django wrapper for nameko microservice framework.',
     url='http://github.com/and3rson/django-nameko',
     author='Andrew Dunai',
