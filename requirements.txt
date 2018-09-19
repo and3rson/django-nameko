@@ -1,2 +1,2 @@
 django>=1.10
-nameko==2.8.*
+nameko==2.11.*

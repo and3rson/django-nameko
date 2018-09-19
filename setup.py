@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='django-nameko',
-    version='0.2',
+    version='0.3',
     description=' Django wrapper for nameko microservice framework.',
     url='http://github.com/and3rson/django-nameko',
     author='Andrew Dunai',
@@ -13,7 +13,7 @@ setup(
     packages=['django_nameko'],
     zip_safe=False,
     install_requires=[
-        'nameko>=2.8.0,<2.9',
+        'nameko>=2.11.0,<2.12',
         'django>=1.10,<2.0'
     ],
     test_suite='nose.collector',

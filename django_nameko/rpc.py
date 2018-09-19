@@ -5,7 +5,7 @@ import weakref
 from threading import Lock
 
 from six.moves import xrange as xrange_six, queue as queue_six
-from nameko.exceptions import RpcConnectionError, RpcTimeout
+# from nameko.exceptions import RpcTimeout
 from amqp.exceptions import ConnectionError
 from nameko.standalone.rpc import ClusterRpcProxy
 from django.conf import settings
@@ -58,7 +58,7 @@ class ClusterRpcProxyPool(object):
                     self.pool._clear()
                     self.pool._reload()  # reload all worker
                     self.stop()
-                elif exc_type in [RpcConnectionError,  ConnectionError]:  # RpcTimeout,
+                elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
                     # self.pool._clear()
                     self.pool._reload(1)  # reload atmost 1 worker
                     self.stop()
