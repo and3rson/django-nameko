@@ -13,7 +13,7 @@ setup(
     packages=['django_nameko'],
     zip_safe=False,
     install_requires=[
-        'nameko>=2.11.0,<2.12',
+        'nameko>=2.11.0',
         'django>=1.10,<2.0'
     ],
     test_suite='nose.collector',

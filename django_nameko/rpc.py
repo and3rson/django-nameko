@@ -1,3 +1,12 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+#
+#  __init__.py
+#
+#
+#  Created by Vincent Anh Tran on 21/03/2018
+#  Copyright (c) . All rights reserved.
+#
 from __future__ import absolute_import
 
 import logging
@@ -5,7 +14,6 @@ import weakref
 from threading import Lock
 
 from six.moves import xrange as xrange_six, queue as queue_six
-# from nameko.exceptions import RpcTimeout
 from amqp.exceptions import ConnectionError
 from nameko.standalone.rpc import ClusterRpcProxy
 from django.conf import settings
@@ -36,6 +44,7 @@ class ClusterRpcProxyPool(object):
 
     This class is thread-safe and designed to work with GEvent.
     """
+
     class RpcContext(object):
         def __init__(self, pool, config):
             self.pool = weakref.proxy(pool)
@@ -53,7 +62,7 @@ class ClusterRpcProxyPool(object):
         def __exit__(self, exc_type, exc_value, traceback, **kwargs):
             try:
                 if exc_type == RuntimeError and (
-                                exc_value == "This consumer has been stopped, and can no longer be used"
+                        exc_value == "This consumer has been stopped, and can no longer be used"
                         or exc_value == "This consumer has been disconnected, and can no longer be used"):
                     self.pool._clear()
                     self.pool._reload()  # reload all worker
