@@ -4,11 +4,13 @@ from setuptools import setup
 
 setup(
     name='django-nameko',
-    version='0.3',
+    version='0.4',
     description=' Django wrapper for nameko microservice framework.',
     url='http://github.com/and3rson/django-nameko',
     author='Andrew Dunai',
     author_email='andrew@dun.ai',
+    maintainer='Vincent Anh Tran',
+    maintainer_email='tranvietanh1991@gmail.com',
     license='GPLv2',
     packages=['django_nameko'],
     zip_safe=False,
