@@ -1,3 +1,12 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+#
+#  __init__.py
+#
+#
+#  Created by Vincent Anh Tran on 21/03/2018
+#  Copyright (c) Vincent Anh Tran - maintain this project since 0.1.1
+#
 from __future__ import absolute_import
 
 import logging
@@ -5,7 +14,6 @@ import weakref
 from threading import Lock
 
 from six.moves import xrange as xrange_six, queue as queue_six
-# from nameko.exceptions import RpcTimeout
 from amqp.exceptions import ConnectionError
 from nameko.standalone.rpc import ClusterRpcProxy
 from django.conf import settings
@@ -36,6 +44,7 @@ class ClusterRpcProxyPool(object):
 
     This class is thread-safe and designed to work with GEvent.
     """
+
     class RpcContext(object):
         def __init__(self, pool, config):
             self.pool = weakref.proxy(pool)
@@ -53,7 +62,7 @@ class ClusterRpcProxyPool(object):
         def __exit__(self, exc_type, exc_value, traceback, **kwargs):
             try:
                 if exc_type == RuntimeError and (
-                                exc_value == "This consumer has been stopped, and can no longer be used"
+                        exc_value == "This consumer has been stopped, and can no longer be used"
                         or exc_value == "This consumer has been disconnected, and can no longer be used"):
                     self.pool._clear()
                     self.pool._reload()  # reload all worker
@@ -80,6 +89,7 @@ class ClusterRpcProxyPool(object):
         self.pool_size = pool_size
         self.context_data = context_data
         self.timeout = timeout
+        self.state = 'NOT_STARTED'
 
     def start(self):
         """ Populate pool with connections.
@@ -88,6 +98,11 @@ class ClusterRpcProxyPool(object):
         for i in xrange_six(self.pool_size):
             ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
             self.queue.put(ctx)
+        self.state = 'STARTED'
+
+    @property
+    def is_started(self):
+        return self.state != 'NOT_STARTED'
 
     def _clear(self):
         count = 0
@@ -139,7 +154,7 @@ pool = None
 create_pool_lock = Lock()
 
 
-def get_pool():
+def get_pool(pool_name=None):
     """
     Use this method to acquire connection pool.
 
@@ -152,14 +167,40 @@ def get_pool():
     """
     create_pool_lock.acquire()
     global pool
+    NAMEKO_MULTI_POOL = getattr(settings, 'NAMEKO_MULTI_POOL', None)
     if not pool:
         # Lazy instantiation
         if not hasattr(settings, 'NAMEKO_CONFIG') or not settings.NAMEKO_CONFIG:
             raise ImproperlyConfigured('NAMEKO_CONFIG must be specified and should include at least "AMQP_URL" key.')
-        pool = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
-        pool.start()
+        if NAMEKO_MULTI_POOL:
+            pool = dict()
+            context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', dict())
+            multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
+            for name in NAMEKO_MULTI_POOL:
+                pool_context_data = multi_context_data.get(name, dict())
+                pool_context_data.update(context_data)
+                # each pool will have different context_data
+                _pool = ClusterRpcProxyPool(settings.NAMEKO_CONFIG, context_data=pool_context_data)
+                pool[name] = _pool
+        else:
+            pool = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
+            pool.start()  # start immediately
     create_pool_lock.release()
-    return pool
+    if pool_name is not None:
+        if not NAMEKO_MULTI_POOL or pool_name not in pool:
+            raise ImproperlyConfigured(
+                'NAMEKO_MULTI_POOL must be specified and should include this name ["%s"]' % pool_name)
+        else:
+            _pool = pool[pool_name]
+    else:
+        if NAMEKO_MULTI_POOL:
+            _pool = pool[NAMEKO_MULTI_POOL[0]]
+        else:
+            _pool = pool
+
+    if not _pool.is_started:
+        _pool.start()
+    return _pool
 
 
 def destroy_pool():
