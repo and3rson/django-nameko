@@ -191,15 +191,16 @@ def get_pool(pool_name=None):
             raise ImproperlyConfigured(
                 'NAMEKO_MULTI_POOL must be specified and should include this name ["%s"]' % pool_name)
         else:
-            _pool = pool.get(pool_name)
-            if not _pool.is_started:
-                _pool.start()
-            return _pool
+            _pool = pool[pool_name]
     else:
         if NAMEKO_MULTI_POOL:
-            return pool[NAMEKO_MULTI_POOL[0]]
+            _pool = pool[NAMEKO_MULTI_POOL[0]]
         else:
-            return pool
+            _pool = pool
+
+    if not _pool.is_started:
+        _pool.start()
+    return _pool
 
 
 def destroy_pool():

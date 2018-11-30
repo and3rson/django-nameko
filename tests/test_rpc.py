@@ -74,12 +74,12 @@ def test_context_data():
 @override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'), NAMEKO_MULTI_POOL=['pool1', 'pool2'])
 def test_multi_pool():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
+        pool_1 = get_pool()
         pool1 = get_pool('pool1')
         pool2 = get_pool('pool2')
         assert pool1 != pool2
         assert pool1.is_started and pool2.is_started
-        pool_1 = get_pool()
-        assert pool_1 == pool1
+        assert pool_1.is_started and pool_1 == pool1
         tools.assert_raises(ImproperlyConfigured, lambda: get_pool('pool3'))
 
     destroy_pool()
