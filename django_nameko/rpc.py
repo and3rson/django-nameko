@@ -167,11 +167,11 @@ def get_pool(pool_name=None):
     """
     create_pool_lock.acquire()
     global pool
+    NAMEKO_MULTI_POOL = getattr(settings, 'NAMEKO_MULTI_POOL', None)
     if not pool:
         # Lazy instantiation
         if not hasattr(settings, 'NAMEKO_CONFIG') or not settings.NAMEKO_CONFIG:
             raise ImproperlyConfigured('NAMEKO_CONFIG must be specified and should include at least "AMQP_URL" key.')
-        NAMEKO_MULTI_POOL = getattr(settings, 'NAMEKO_MULTI_POOL', None)
         if NAMEKO_MULTI_POOL:
             pool = dict()
             context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', dict())
@@ -187,7 +187,7 @@ def get_pool(pool_name=None):
             pool.start()  # start immediately
     create_pool_lock.release()
     if pool_name is not None:
-        if not isinstance(pool, dict) or len(pool) == 0 or pool_name not in pool:
+        if not NAMEKO_MULTI_POOL or pool_name not in pool:
             raise ImproperlyConfigured(
                 'NAMEKO_MULTI_POOL must be specified and should include this name ["%s"]' % pool_name)
         else:
@@ -196,7 +196,10 @@ def get_pool(pool_name=None):
                 _pool.start()
             return _pool
     else:
-        return pool
+        if NAMEKO_MULTI_POOL:
+            return pool[NAMEKO_MULTI_POOL[0]]
+        else:
+            return pool
 
 
 def destroy_pool():

@@ -53,7 +53,7 @@ from django_nameko import get_pool
 with get_pool('pool1').next() as rpc:
     rpc.mailer.send_mail(foo='bar')
     
-# call get_pool() without argument will return the dictionary of every pool
+# call get_pool() without argument will return the first pool
 
 
 ```

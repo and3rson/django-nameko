@@ -78,6 +78,8 @@ def test_multi_pool():
         pool2 = get_pool('pool2')
         assert pool1 != pool2
         assert pool1.is_started and pool2.is_started
+        pool_1 = get_pool()
+        assert pool_1 == pool1
         tools.assert_raises(ImproperlyConfigured, lambda: get_pool('pool3'))
 
     destroy_pool()
