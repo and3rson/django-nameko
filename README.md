@@ -35,4 +35,8 @@ NAMEKO_POOL_SIZE = 4
 # Credits
 Thanks to guys who made an awesome [Nameko] framework.
 
+Maintainers:
+  - Andrew Dunai ([@and3rson](https://github.com/and3rson))
+  - Vincent Anh Tran ([@tranvietanh1991](https://github.com/tranvietanh1991))
+
 [Nameko]: https://github.com/onefinestay/nameko
