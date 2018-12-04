@@ -79,11 +79,11 @@ class ClusterRpcProxyPool(object):
                 self.stop()
 
     def __init__(self, config, pool_size=None, context_data=None, timeout=0):
-        if pool_size is None:
+        if pool_size is None:  # keep this for compatiblity
             pool_size = getattr(settings, 'NAMEKO_POOL_SIZE', 4)
-        if context_data is None:
+        if context_data is None:  # keep this for compatiblity
             context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', None)
-        if timeout <= 0:
+        if timeout <= 0:  # keep this for compatiblity
             timeout = getattr(settings, 'NAMEKO_TIMEOUT', None)
         self.config = config
         self.pool_size = pool_size
@@ -154,6 +154,22 @@ pool = None
 create_pool_lock = Lock()
 
 
+def mergedicts(dict1, dict2):
+    for k in set(dict1.keys()).union(dict2.keys()):
+        if k in dict1 and k in dict2:
+            if isinstance(dict1[k], dict) and isinstance(dict2[k], dict):
+                yield (k, dict(mergedicts(dict1[k], dict2[k])))
+            else:
+                # If one of the values is not a dict, you can't continue merging it.
+                # Value from second dict overrides one in first and we move on.
+                yield (k, dict2[k])
+                # Alternatively, replace this with exception raiser to alert you of value conflicts
+        elif k in dict1:
+            yield (k, dict1[k])
+        else:
+            yield (k, dict2[k])
+
+
 def get_pool(pool_name=None):
     """
     Use this method to acquire connection pool.
@@ -167,34 +183,56 @@ def get_pool(pool_name=None):
     """
     create_pool_lock.acquire()
     global pool
-    NAMEKO_MULTI_POOL = getattr(settings, 'NAMEKO_MULTI_POOL', None)
+    NAMEKO_CONFIG = getattr(settings, 'NAMEKO_CONFIG', {})
+    if not NAMEKO_CONFIG:
+        raise ImproperlyConfigured('NAMEKO_CONFIG must be specified')
+    NAMEKO_MULTI_POOL = [name for name in NAMEKO_CONFIG.keys() if name.islower()]
     if not pool:
         # Lazy instantiation
-        if not hasattr(settings, 'NAMEKO_CONFIG') or not settings.NAMEKO_CONFIG:
-            raise ImproperlyConfigured('NAMEKO_CONFIG must be specified and should include at least "AMQP_URL" key.')
         if NAMEKO_MULTI_POOL:
             pool = dict()
-            context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', dict())
-            multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
-            for name in NAMEKO_MULTI_POOL:
-                pool_context_data = multi_context_data.get(name, dict())
-                pool_context_data.update(context_data)
-                # each pool will have different context_data
-                _pool = ClusterRpcProxyPool(settings.NAMEKO_CONFIG, context_data=pool_context_data)
+            if 'default' not in NAMEKO_CONFIG and 'AMQP_URL' not in NAMEKO_CONFIG['default']:
+                raise ImproperlyConfigured(
+                    'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URL"')
+            default_config = NAMEKO_CONFIG['default']
+            # default_context_data = NAMEKO_CONFIG['default']['POOL'].get('CONTEXT_DATA', dict())
+            # multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
+            for name, _config in NAMEKO_CONFIG.items():
+                # each pool will have different config with default config as default
+                if name != 'default':
+                    # overide default config with pool config by merging 2 dict
+                    pool_config = dict(mergedicts(default_config, _config))
+                else:
+                    # default pool
+                    pool_config = default_config.copy()
+                # extract pool config from RpcCluster config
+                pool_size = pool_config.pop('POOL_SIZE', None)
+                pool_context_data = pool_config.pop('POOL_CONTEXT_DATA', None)
+                pool_timeout = pool_config.pop('POOL_TIMEOUT', 0)
+                # init pool
+                _pool = ClusterRpcProxyPool(pool_config, pool_size=pool_size, context_data=pool_context_data,
+                                            timeout=pool_timeout)
+                # assign pool to corresponding name
                 pool[name] = _pool
+            if len(NAMEKO_MULTI_POOL) == 1:
+                pool['default'].start()  # start immediately since there is only 1 pool
         else:
+            # single pool with old style configuration
+            if not hasattr(settings, 'NAMEKO_CONFIG') or not settings.NAMEKO_CONFIG:
+                raise ImproperlyConfigured(
+                    'NAMEKO_CONFIG must be specified and should include at least "AMQP_URL" key.')
             pool = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
             pool.start()  # start immediately
     create_pool_lock.release()
     if pool_name is not None:
         if not NAMEKO_MULTI_POOL or pool_name not in pool:
             raise ImproperlyConfigured(
-                'NAMEKO_MULTI_POOL must be specified and should include this name ["%s"]' % pool_name)
+                'NAMEKO_CONFIG must include this pool name "%s" config' % pool_name)
         else:
             _pool = pool[pool_name]
     else:
         if NAMEKO_MULTI_POOL:
-            _pool = pool[NAMEKO_MULTI_POOL[0]]
+            _pool = pool['default']
         else:
             _pool = pool
 

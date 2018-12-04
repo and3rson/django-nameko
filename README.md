@@ -39,26 +39,44 @@ NAMEKO_CONTEXT_DATA = {
 }
 
 # Create multiple ClusterRpcProxy pool each one assoiate with a name
-NAMEKO_MULTI_POOL = ['pool1', 'pool2', 'pool3']
-# Each pool can have different context_data, 
-# note that: NAMEKO_CONTEXT_DATA is also passed to every pool context_data
-NAMEKO_MULTI_CONTEXT_DATA={
-   'pool1': {"name": "pool1", "data": 123},
-   'pool2': {"name": "pool2", "data": 321},
+# Every pool with pool name different than 'default' will use 'default' pool config as default configuration
+NAMEKO_CONFIG={
+    'default': {
+        'AMQP_URL': 'amqp://',
+        'POOL_SIZE': 4,
+        'POOL_CONTEXT_DATA': {"common": "multi"},
+        'POOL_TIMEOUT': None
+    },
+    'pool1': {
+        'AMQP_URL': 'amqp://pool2',
+        'POOL_CONTEXT_DATA': {"name": "pool1", "data": 123},
+    },
+    'pool2': {
+        'AMQP_URL': 'amqp://pool3',
+        'POOL_CONTEXT_DATA': {"name": "pool2", "data": 321},
+        'POOL_TIMEOUT': 60
+    },
+    'pool3': {
+        'POOL_SIZE': 8,
+        'POOL_TIMEOUT': 60
+    }
 }
-
 # Use multi pool by putting pool name in get_pool(..)
 from django_nameko import get_pool
 
 with get_pool('pool1').next() as rpc:
     rpc.mailer.send_mail(foo='bar')
     
-# call get_pool() without argument will return the first pool
+# call get_pool() without argument will return the 'default' pool
 
 
 ```
 
 # Credits
 Thanks to guys who made an awesome [Nameko] framework.
+
+Maintainers:
+  - Andrew Dunai ([@and3rson](https://github.com/and3rson))
+  - Vincent Anh Tran ([@tranvietanh1991](https://github.com/tranvietanh1991))
 
 [Nameko]: https://github.com/nameko/nameko

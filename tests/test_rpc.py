@@ -71,15 +71,29 @@ def test_context_data():
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'), NAMEKO_MULTI_POOL=['pool1', 'pool2'])
+@override_settings(NAMEKO_CONFIG={
+    'default': {
+        'AMQP_URL': 'amqp://'
+    },
+    'pool1': {
+        'POOL_SIZE': 8,
+    },
+    'pool2': {
+        'AMQP_URL': 'amqp://pool2'
+    }
+})
 def test_multi_pool():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
-        pool_1 = get_pool()
+        pool_default = get_pool('default')
+        pool_0 = get_pool()
         pool1 = get_pool('pool1')
         pool2 = get_pool('pool2')
         assert pool1 != pool2
         assert pool1.is_started and pool2.is_started
-        assert pool_1.is_started and pool_1 == pool1
+        assert pool_0.is_started and pool_default == pool_0
+        assert pool1.config == pool_0.config
+        assert pool1.queue.qsize() == 8
+        assert pool2.config != pool_0.config
         tools.assert_raises(ImproperlyConfigured, lambda: get_pool('pool3'))
 
     destroy_pool()
@@ -92,16 +106,32 @@ def test_multi_pool_no_config():
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'), NAMEKO_MULTI_POOL=['pool1', 'pool2', 'pool3'],
-                   NAMEKO_CONTEXT_DATA={"common": "multi"},
-                   NAMEKO_MULTI_CONTEXT_DATA={
-                       'pool1': {"name": "pool1", "data": 123},
-                       'pool2': {"name": "pool2", "data": 321},
-                   })
+@override_settings(NAMEKO_CONFIG={
+    'default': {
+        'AMQP_URL': 'amqp://',
+        'POOL_SIZE': 4,
+        'POOL_CONTEXT_DATA': {"common": "multi"},
+        'POOL_TIMEOUT': None
+    },
+    'pool1': {
+        'AMQP_URL': 'amqp://pool2',
+        'POOL_CONTEXT_DATA': {"name": "pool1", "data": 123},
+    },
+    'pool2': {
+        'AMQP_URL': 'amqp://pool3',
+        'POOL_CONTEXT_DATA': {"name": "pool2", "data": 321},
+        'POOL_TIMEOUT': 60
+    },
+    'pool3': {
+        'POOL_SIZE': 8,
+        'POOL_TIMEOUT': 60
+    }
+})
 def test_multi_pool_context_data():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool1 = get_pool('pool1')
         pool2 = get_pool('pool2')
+        logger.debug(pool1.context_data)
         assert pool1.context_data.get("common") == "multi"
         assert pool2.context_data.get("common") == "multi"
         assert pool1.context_data.get("name") == "pool1"
@@ -111,6 +141,7 @@ def test_multi_pool_context_data():
         pool3 = get_pool('pool3')
         assert pool3.context_data.get("common") == "multi"
         assert pool3.context_data.get("name") is None
+        assert pool3.queue.qsize() == 8
         assert pool1.is_started and pool2.is_started and pool3.is_started
         tools.assert_raises(ImproperlyConfigured, lambda: get_pool('pool4'))
 
