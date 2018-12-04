@@ -131,7 +131,6 @@ def test_multi_pool_context_data():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool1 = get_pool('pool1')
         pool2 = get_pool('pool2')
-        logger.debug(pool1.context_data)
         assert pool1.context_data.get("common") == "multi"
         assert pool2.context_data.get("common") == "multi"
         assert pool1.context_data.get("name") == "pool1"
