@@ -68,11 +68,10 @@ class ClusterRpcProxyPool(object):
                     self.pool._clear()
                     self.pool._reload()  # reload all worker
                     self.stop()
-                # TODO: temporary disable this to check wherether it has any effect on the issue or not
-                # elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
-                #     # self.pool._clear()
-                #     self.pool._reload(1)  # reload atmost 1 worker
-                #     self.stop()
+                elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
+                    # self.pool._clear()
+                    self.pool._reload(1)  # reload atmost 1 worker
+                    self.stop()
                 else:
                     self.pool._put_back(self)
             except ReferenceError:  # pragma: no cover
