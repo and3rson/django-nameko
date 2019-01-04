@@ -18,6 +18,7 @@ from amqp.exceptions import ConnectionError
 from nameko.standalone.rpc import ClusterRpcProxy
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+import copy
 
 _logger = logging.getLogger(__name__)
 
@@ -67,10 +68,11 @@ class ClusterRpcProxyPool(object):
                     self.pool._clear()
                     self.pool._reload()  # reload all worker
                     self.stop()
-                elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
-                    # self.pool._clear()
-                    self.pool._reload(1)  # reload atmost 1 worker
-                    self.stop()
+                # TODO: temporary disable this to check wherether it has any effect on the issue or not
+                # elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
+                #     # self.pool._clear()
+                #     self.pool._reload(1)  # reload atmost 1 worker
+                #     self.stop()
                 else:
                     self.pool._put_back(self)
             except ReferenceError:  # pragma: no cover
@@ -85,9 +87,9 @@ class ClusterRpcProxyPool(object):
             context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', None)
         if timeout <= 0:  # keep this for compatiblity
             timeout = getattr(settings, 'NAMEKO_TIMEOUT', None)
-        self.config = config
+        self.config = copy.deepcopy(config)
         self.pool_size = pool_size
-        self.context_data = context_data
+        self.context_data = copy.deepcopy(context_data)
         self.timeout = timeout
         self.state = 'NOT_STARTED'
 
@@ -201,7 +203,7 @@ def get_pool(pool_name=None):
                 # each pool will have different config with default config as default
                 if name != 'default':
                     # overide default config with pool config by merging 2 dict
-                    pool_config = dict(mergedicts(default_config, _config))
+                    pool_config = dict(mergedicts(default_config.copy(), _config))
                 else:
                     # default pool
                     pool_config = default_config.copy()
