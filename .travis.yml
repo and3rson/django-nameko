@@ -13,3 +13,14 @@ cache:
 
 script:
   - python2 ./setup.py test
+
+jobs:
+  include:
+  - stage: deploy
+    python: 2.7
+    script: echo "deploy to pypi (pip)"
+    deploy:
+      provider: pypi
+      user: tranvietanh1991
+      password:
+        secure: Fm/59iRm2pGce/OT2+3T4lKA33sU1EDxCSKfwTRVMn13T4QXZB0leDrNlRJOuCerB/R1QYvp4YycWligV2lbLB903/wMrSSkitQR4fAlnX7iQumhDt/0rFltcselN41B9J3pAbBZwEs6uNvXUdnBfT+/tbNJuw3FYWQ1zZXZWMPSnK1+RBZyn9qaTnQgXbjpRpUymH5Xq2Av61gnQ0L4TgznE/5nkq7cHCVm1gFq8B+gZ5oE6xLHGmpjI7eawkJ0jMNnIo42Ak+bxE33J8ax+X53fGNvpYg2OU0ZjF2LzLw0BzDTRDOIJiUCcmPF/vit6mXjlhDw5+lNMC3BI/LA93kmnxP7CVnQvIWvFEbJLnhXfbwQjjJMqTUPs8eAH/O12fUjltFd3DVhvdj0zXe3AK4qfltPWEHD2hSqmM+TMs/qh+GB0nXUnjqhmL9HjMGprMJfkOiZjANYCGsbLQfVEVddhRwybvnS74+xLTyv+pKJEX9/DMCRvlv1ra09go2Bwx/FtfwU7gy2ZSFpskyItnkZrNJuc0oxcagVU7cn0gFwG1ySnWNCzMYOxwY6WDzeT0jUCpLwFpTEoECHKdXbZgxlKSz3oaOJWQwvNCS0zC6PuGa4LOqn1eWcwd7sCAvJs+93k6kcp4atYVIQ8phPTAS33YBSVIf7FerJNnxWlLA=
