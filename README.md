@@ -1,6 +1,10 @@
 # django-nameko
 
-![build status](https://api.travis-ci.org/and3rson/django-nameko.svg)
+## Travis-CI
+| Branch  | Build status                             |
+| ------- | ---------------------------------------- |
+| master  | [![Build Status](https://travis-ci.org/and3rson/django-nameko.svg?branch=master)](https://travis-ci.org/and3rson/django-nameko) |
+| develop | [![Build Status](https://travis-ci.org/and3rson/django-nameko.svg?branch=develop)](https://travis-ci.org/and3rson/django-nameko) |
 
 Django wrapper for [Nameko] microservice framework.
 
