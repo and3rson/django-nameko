@@ -24,3 +24,5 @@ jobs:
       user: tranvietanh1991
       password:
         secure: M0EPUdbMkb740aJvQWX0gIkPrkaSEhj/a7VzgyYeIA6iqpeDIxSk6nMix0HxcTvYOM7r+xQevk5CJyJAHVTnvrksYkZWbq+znp/GnFV3VwdZ5+0+7598azy0MJr8cUDeqGUbK3SOswdqztXLL1nqQ3f7XjQmViheC3OKEhwm5cdtqd92lFaprnx0pQCYYlxaAGL+W9jmVFwsxPJXaf3e98Nz8iIbCkFqlEsnrxFaTIJA02cL61O2lzttRLXM1GmyTXZYHBfHKVuHux4lvbGoOsyor2Jh0BULctspcILaJggkJZYDtW2qJ2fbl5B0M+gTFCenf4y8ZIZRkGYmcctZCa2RwErCe4fygo5nmsCNXCH4u5z4XHzOLToV47XBnF7SafKVoo42onfF9D417L0rAg1s3P7MU04ucItjAQY26QLYznuP3PNFd7rDjgT3yUl//dMW28Jo2tfYjOvcsjhamyAxPtm8b9rOMLM1jxKgPqOSsYISE8V9/BLHfGUwxk54QCUD7zoQ9PLZA+/5Mqet1c5dpO52WXKjUs4IkQtB/7diAbDLLdFWfQe8CY3dHtePVjpB4KrgfA4qiwSCYj0Syt1Go5xdJBlQIH9cyjiCpC8PlS/Ajqg91NFN/54cndTwmXDJBlyNYig00rLjNUaUyO/p5ayR0TuyIEjVJWV8pok=
+      on:
+        branch: master
