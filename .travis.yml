@@ -11,14 +11,11 @@ cache:
   directories:
     - $HOME/.cache/pip
 
-script:
-  - python2 ./setup.py test
-
 jobs:
   include:
   - stage: deploy
     python: 2.7
-    script: echo "deploy to pypi (pip)"
+    script: python2 ./setup.py test
     deploy:
       provider: pypi
       user: tranvietanh1991
