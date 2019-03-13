@@ -236,7 +236,9 @@ def get_pool(pool_name=None):
             _pool = pool[pool_name]
     else:
         if isinstance(pool, dict):
-            _pool = pool['default']
+            if len(pool) == 0:
+                raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config' % pool_name)
+            _pool = pool.get('default', pool.values()[0])
         else:
             _pool = pool
 
