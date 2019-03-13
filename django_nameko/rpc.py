@@ -184,14 +184,14 @@ def get_pool(pool_name=None):
 
     global pool
 
-    if pool is None:
+    if not pool:
         NAMEKO_CONFIG = getattr(settings, 'NAMEKO_CONFIG', {})
         if not NAMEKO_CONFIG:
             raise ImproperlyConfigured('NAMEKO_CONFIG must be specified')
         NAMEKO_MULTI_POOL = [name for name in NAMEKO_CONFIG.keys() if name.islower()]
         # Lazy instantiation, acquire lock first to prevent dupication init
         create_pool_lock.acquire()
-        if pool is None:  # double check inside lock is importance
+        if not pool:  # double check inside lock is importance
             if NAMEKO_MULTI_POOL:
                 pool = dict()
                 if 'default' not in NAMEKO_CONFIG and 'AMQP_URL' not in NAMEKO_CONFIG['default']:
@@ -237,7 +237,7 @@ def get_pool(pool_name=None):
     else:
         if isinstance(pool, dict):
             if len(pool) == 0:
-                raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config' % pool_name)
+                raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config')
             _pool = pool.get('default', pool.values()[0])
         else:
             _pool = pool
