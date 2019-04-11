@@ -82,7 +82,7 @@ class ClusterRpcProxyPool(object):
                                 or cmp(self.rpc._worker_ctx.data, self.pool.context_data) != 0:
                             # ensure that worker_ctx.data is revert back to original pool.context_data when exit of block
                             for key in self.rpc._worker_ctx.data.keys():
-                                if key not in pool.context_data:
+                                if key not in self.pool.context_data:
                                     del self.rpc._worker_ctx.data[key]
                                 else:
                                     self.rpc._worker_ctx.data[key] = self.pool.context_data[key]
@@ -164,7 +164,7 @@ class ClusterRpcProxyPool(object):
         self.queue = None
 
 
-pool = None
+nameko_global_pools = None
 create_pool_lock = Lock()
 
 
@@ -186,7 +186,7 @@ def mergedicts(dict1, dict2):
 
 def get_pool(pool_name=None):
     """
-    Use this method to acquire connection pool.
+    Use this method to acquire a connection pool from nameko_global_pools.
 
     Example usage:
 
@@ -196,18 +196,18 @@ def get_pool(pool_name=None):
             rpc.mailer.send_mail(foo='bar')
     """
 
-    global pool
+    global nameko_global_pools
 
-    if not pool:
+    if not nameko_global_pools:
         NAMEKO_CONFIG = getattr(settings, 'NAMEKO_CONFIG', {})
         if not NAMEKO_CONFIG:
             raise ImproperlyConfigured('NAMEKO_CONFIG must be specified')
         NAMEKO_MULTI_POOL = [name for name in NAMEKO_CONFIG.keys() if name.islower()]
         # Lazy instantiation, acquire lock first to prevent dupication init
         create_pool_lock.acquire()
-        if not pool:  # double check inside lock is importance
+        if not nameko_global_pools:  # double check inside lock is importance
             if NAMEKO_MULTI_POOL:
-                pool = dict()
+                nameko_global_pools = dict()
                 if 'default' not in NAMEKO_CONFIG and 'AMQP_URL' not in NAMEKO_CONFIG['default']:
                     raise ImproperlyConfigured(
                         'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URL"')
@@ -215,50 +215,50 @@ def get_pool(pool_name=None):
                 # default_context_data = NAMEKO_CONFIG['default']['POOL'].get('CONTEXT_DATA', dict())
                 # multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
                 for name, _config in NAMEKO_CONFIG.items():
-                    # each pool will have different config with default config as default
+                    # each nameko_global_pools will have different config with default config as default
                     if name != 'default':
-                        # overide default config with pool config by merging 2 dict
+                        # overide default config with nameko_global_pools config by merging 2 dict
                         pool_config = dict(mergedicts(default_config.copy(), _config))
                     else:
-                        # default pool
+                        # default nameko_global_pools
                         pool_config = default_config.copy()
-                    # extract pool config from RpcCluster config
+                    # extract nameko_global_pools config from RpcCluster config
                     pool_size = pool_config.pop('POOL_SIZE', None)
                     pool_context_data = pool_config.pop('POOL_CONTEXT_DATA', None)
                     pool_timeout = pool_config.pop('POOL_TIMEOUT', 0)
-                    # init pool
+                    # init nameko_global_pools
                     _pool = ClusterRpcProxyPool(pool_config, pool_size=pool_size, context_data=pool_context_data,
                                                 timeout=pool_timeout)
                     _pool.start()
-                    # assign pool to corresponding name
-                    pool[name] = _pool
+                    # assign nameko_global_pools to corresponding name
+                    nameko_global_pools[name] = _pool
             else:
-                # single pool with old style configuration
+                # single nameko_global_pools with old style configuration
                 if not hasattr(settings, 'NAMEKO_CONFIG') or not settings.NAMEKO_CONFIG:
                     raise ImproperlyConfigured(
                         'NAMEKO_CONFIG must be specified and should include at least "AMQP_URL" key.')
-                pool = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
-                pool.start()  # start immediately
+                nameko_global_pools = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
+                nameko_global_pools.start()  # start immediately
         # Finish instantiation, release lock
         create_pool_lock.release()
 
     if pool_name is not None:
-        if isinstance(pool, dict) is False or pool_name not in pool:
+        if isinstance(nameko_global_pools, dict) is False or pool_name not in nameko_global_pools:
             raise ImproperlyConfigured(
-                'NAMEKO_CONFIG must include this pool name "%s" config' % pool_name)
+                'NAMEKO_CONFIG must include this nameko_global_pools name "%s" config' % pool_name)
         else:
-            _pool = pool[pool_name]
+            _pool = nameko_global_pools[pool_name]
     else:
-        if isinstance(pool, dict):
-            if len(pool) == 0:
+        if isinstance(nameko_global_pools, dict):
+            if len(nameko_global_pools) == 0:
                 raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config')
-            _pool = pool.get('default', pool.values()[0])
+            _pool = nameko_global_pools.get('default', nameko_global_pools.values()[0])
         else:
-            _pool = pool
+            _pool = nameko_global_pools
 
     return _pool
 
 
 def destroy_pool():
-    global pool
-    pool = None
+    global nameko_global_pools
+    nameko_global_pools = None
