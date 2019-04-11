@@ -49,7 +49,7 @@ class ClusterRpcProxyPool(object):
     class RpcContext(object):
         def __init__(self, pool, config):
             self.pool = weakref.proxy(pool)
-            self.proxy = ClusterRpcProxy(config, context_data=pool.context_data, timeout=pool.timeout)
+            self.proxy = ClusterRpcProxy(config, context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
             self.rpc = self.proxy.start()
 
         def stop(self):
@@ -78,6 +78,14 @@ class ClusterRpcProxyPool(object):
                 # We're detached from the parent, so this context
                 # is going to silently die.
                 self.stop()
+            if len(self.rpc._worker_ctx.data) != len(pool.context_data) \
+                    or cmp(self.rpc._worker_ctx.data, pool.context_data) != 0:
+                # ensure that worker_ctx.data is revert back to original pool.context_data when exit of block
+                for key in self.rpc._worker_ctx.data.keys():
+                    if key not in pool.context_data:
+                        del self.rpc._worker_ctx.data[key]
+                    else:
+                        self.rpc._worker_ctx.data[key] = pool.context_data[key]
 
     def __init__(self, config, pool_size=None, context_data=None, timeout=0):
         if pool_size is None:  # keep this for compatiblity
@@ -153,6 +161,7 @@ class ClusterRpcProxyPool(object):
 
 pool = None
 create_pool_lock = Lock()
+
 
 def mergedicts(dict1, dict2):
     for k in set(dict1.keys()).union(dict2.keys()):
