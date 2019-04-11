@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 import os
 
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'parseyml/VERSION')) as f:
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'django_nameko/VERSION')) as f:
     __version__ = f.read()
 
 from setuptools import setup

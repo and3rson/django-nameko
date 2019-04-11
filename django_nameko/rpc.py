@@ -73,19 +73,24 @@ class ClusterRpcProxyPool(object):
                     self.pool._reload(1)  # reload atmost 1 worker
                     self.stop()
                 else:
+                    if self.rpc._worker_ctx.data is not None:
+                        if self.pool.context_data is None:
+                            # clear all key since there is no.pool context_data
+                            for key in self.rpc._worker_ctx.data.keys():
+                                del self.rpc._worker_ctx.data[key]
+                        elif len(self.rpc._worker_ctx.data) != len(self.pool.context_data) \
+                                or cmp(self.rpc._worker_ctx.data, self.pool.context_data) != 0:
+                            # ensure that worker_ctx.data is revert back to original pool.context_data when exit of block
+                            for key in self.rpc._worker_ctx.data.keys():
+                                if key not in pool.context_data:
+                                    del self.rpc._worker_ctx.data[key]
+                                else:
+                                    self.rpc._worker_ctx.data[key] = self.pool.context_data[key]
                     self.pool._put_back(self)
             except ReferenceError:  # pragma: no cover
                 # We're detached from the parent, so this context
                 # is going to silently die.
                 self.stop()
-            if len(self.rpc._worker_ctx.data) != len(pool.context_data) \
-                    or cmp(self.rpc._worker_ctx.data, pool.context_data) != 0:
-                # ensure that worker_ctx.data is revert back to original pool.context_data when exit of block
-                for key in self.rpc._worker_ctx.data.keys():
-                    if key not in pool.context_data:
-                        del self.rpc._worker_ctx.data[key]
-                    else:
-                        self.rpc._worker_ctx.data[key] = pool.context_data[key]
 
     def __init__(self, config, pool_size=None, context_data=None, timeout=0):
         if pool_size is None:  # keep this for compatiblity
