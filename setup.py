@@ -1,10 +1,14 @@
 #!/usr/bin/env python2
+import os
+
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'django_nameko/VERSION')) as f:
+    __version__ = f.read()
 
 from setuptools import setup
 
 setup(
     name='django-nameko',
-    version='0.5.2',
+    version=__version__,
     description=' Django wrapper for nameko microservice framework.',
     url='http://github.com/and3rson/django-nameko',
     author='Andrew Dunai',
