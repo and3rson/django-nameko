@@ -72,7 +72,17 @@ with get_pool('pool1').next() as rpc:
     rpc.mailer.send_mail(foo='bar')
     
 # call get_pool() without argument will return the 'default' pool
+# but you can override the rpc context data before call, example below.
+# it will auto revert back to POOL_CONTEXT_DATA when exit the with block
+with get_pool().next() as rpc:
+    rpc._worker_ctx.data['SMTP_SECRET'] = 'SECRETXXX'
+    rpc.mailer.send_mail(foo='bar')
 
+# try to call rpc outside of with statement block will raise an AttributeError exception 
+rpc.mailer.send_mail(bar='foo')
+#   File "/usr/local/lib/python2.7/site-packages/django_nameko/rpc.py", line 69, in __getattr__
+#     raise AttributeError(item)
+# AttributeError: mailer
 
 ```
 
