@@ -145,3 +145,25 @@ def test_multi_pool_context_data():
         tools.assert_raises(ImproperlyConfigured, lambda: get_pool('pool4'))
 
     destroy_pool()
+
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+def test_pool_call_rpc_out_of_with_statement():
+    with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
+        pool = get_pool()
+        with pool.next() as client:
+            client.foo.bar()
+            assert call().start().foo.bar() in FakeClusterRpcProxy.mock_calls
+        # try to call RPC out of with statement
+        tools.assert_raises(AttributeError, lambda: client.foo.bar())
+        try:
+            client.bar.foo()
+        except AttributeError:
+            pass
+        else:
+            raise AssertionError("AttributeError is expected when call rpc out of with statement")
+        # try again inside with statement
+        with pool.next() as client:
+            client.bar.foo()
+            assert call().start().bar.foo() in FakeClusterRpcProxy.mock_calls
+
+        destroy_pool()
