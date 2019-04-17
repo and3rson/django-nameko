@@ -48,49 +48,63 @@ class ClusterRpcProxyPool(object):
 
     class RpcContext(object):
         def __init__(self, pool, config):
-            self.pool = weakref.proxy(pool)
-            self.proxy = ClusterRpcProxy(config, context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
-            self.rpc = self.proxy.start()
+            self._pool = weakref.proxy(pool)
+            self._proxy = ClusterRpcProxy(config, context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
+            self._rpc = self._proxy.start()
+            self._enable_rpc_call = False
 
-        def stop(self):
-            self.proxy.stop()
-            self.proxy = None
-            self.rpc = None
+        def __del__(self):
+            if self._proxy:
+                self._proxy.stop()
+            self._proxy = None
+            self._rpc = None
+
+        def __getattr__(self, item):
+            """ This will return the service proxy instance
+
+            :param item: name of the service
+            :return: Service Proxy
+            """
+            if not self._enable_rpc_call:
+                raise AttributeError(item)
+            return getattr(self._rpc, item)
 
         def __enter__(self):
-            return self.rpc
+            self._enable_rpc_call = True
+            return weakref.proxy(self)
 
         def __exit__(self, exc_type, exc_value, traceback, **kwargs):
+            self._enable_rpc_call = False
             try:
                 if exc_type == RuntimeError and (
                         exc_value == "This consumer has been stopped, and can no longer be used"
                         or exc_value == "This consumer has been disconnected, and can no longer be used"):
-                    self.pool._clear()
-                    self.pool._reload()  # reload all worker
-                    self.stop()
+                    self._pool._clear()
+                    self._pool._reload()  # reload all worker
+                    self.__del__()
                 elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
                     # self.pool._clear()
-                    self.pool._reload(1)  # reload atmost 1 worker
-                    self.stop()
+                    self._pool._reload(1)  # reload atmost 1 worker
+                    self.__del__()
                 else:
-                    if self.rpc._worker_ctx.data is not None:
-                        if self.pool.context_data is None:
+                    if self._rpc._worker_ctx.data is not None:
+                        if self._pool.context_data is None:
                             # clear all key since there is no.pool context_data
-                            for key in self.rpc._worker_ctx.data.keys():
-                                del self.rpc._worker_ctx.data[key]
-                        elif len(self.rpc._worker_ctx.data) != len(self.pool.context_data) \
-                                or cmp(self.rpc._worker_ctx.data, self.pool.context_data) != 0:
+                            for key in self._rpc._worker_ctx.data.keys():
+                                del self._rpc._worker_ctx.data[key]
+                        elif len(self._rpc._worker_ctx.data) != len(self._pool.context_data) \
+                                or cmp(self._rpc._worker_ctx.data, self._pool.context_data) != 0:
                             # ensure that worker_ctx.data is revert back to original pool.context_data when exit of block
-                            for key in self.rpc._worker_ctx.data.keys():
-                                if key not in self.pool.context_data:
-                                    del self.rpc._worker_ctx.data[key]
+                            for key in self._rpc._worker_ctx.data.keys():
+                                if key not in self._pool.context_data:
+                                    del self._rpc._worker_ctx.data[key]
                                 else:
-                                    self.rpc._worker_ctx.data[key] = self.pool.context_data[key]
-                    self.pool._put_back(self)
+                                    self._rpc._worker_ctx.data[key] = self._pool.context_data[key]
+                    self._pool._put_back(self)
             except ReferenceError:  # pragma: no cover
                 # We're detached from the parent, so this context
                 # is going to silently die.
-                self.stop()
+                self.__del__()
 
     def __init__(self, config, pool_size=None, context_data=None, timeout=0):
         if pool_size is None:  # keep this for compatiblity
@@ -157,7 +171,7 @@ class ClusterRpcProxyPool(object):
         while True:
             try:
                 ctx = self.queue.get_nowait()
-                ctx.stop()
+                ctx.__del__()
             except queue_six.Empty:
                 break
         self.queue.queue.clear()
@@ -261,4 +275,9 @@ def get_pool(pool_name=None):
 
 def destroy_pool():
     global nameko_global_pools
+    if isinstance(nameko_global_pools, dict):
+        for pool in nameko_global_pools.values():
+            pool.stop()
+    elif nameko_global_pools is not None:
+        nameko_global_pools.stop()
     nameko_global_pools = None
