@@ -1,3 +1,4 @@
+from amqp import ConnectionError
 from mock import patch, call
 from django_nameko import rpc, get_pool, destroy_pool
 from nose import tools
@@ -59,6 +60,24 @@ def test_no_settings():
     destroy_pool()
 
 
+@override_settings(NAMEKO_CONFIG={'badkey': 'amqp://'})
+def test_bad_settings():
+    tools.assert_raises(ImproperlyConfigured, get_pool)
+    destroy_pool()
+
+
+@override_settings(NAMEKO_CONFIG={})
+def test_abd_settings():
+    tools.assert_raises(ImproperlyConfigured, get_pool)
+    destroy_pool()
+
+
+@override_settings(NAMEKO_CONFIG={'pool1': dict(AMQP_URL='amqp://')})
+def test_missing_default_settings():
+    tools.assert_raises(ImproperlyConfigured, get_pool)
+    destroy_pool()
+
+
 @override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'), NAMEKO_CONTEXT_DATA={"data": 123})
 def test_context_data():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
@@ -68,6 +87,50 @@ def test_context_data():
         # context_data = ctx.proxy._worker_ctx.data
         # assert context_data.get("data") == 123
         # ctx.stop()
+    destroy_pool()
+
+
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+def test_runtime_error():
+    with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
+        pool = get_pool()
+        assert pool.queue.qsize() == 4, pool.queue.qsize()
+        client = pool.next()
+        assert pool.queue.qsize() == 3, pool.queue.qsize()
+        with tools.assert_raises(RuntimeError):
+            with pool.next():
+                assert pool.queue.qsize() == 2, pool.queue.qsize()
+                raise RuntimeError("This consumer has been stopped, and can no longer be used")
+        # this has cleared all 4 proxy since runtimeerror is expected to broke them all
+        assert pool.queue.qsize() == 4, pool.queue.qsize
+        with client:
+            assert pool.queue.qsize() == 4, pool.queue.qsize()
+            client.foo.bar()
+            assert call().start().foo.bar() in FakeClusterRpcProxy.mock_calls
+        assert pool.queue.qsize() == 5, pool.queue.qsize()
+
+    destroy_pool()
+
+
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+def test_connection_error():
+    with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
+        pool = get_pool()
+        assert pool.queue.qsize() == 4, pool.queue.qsize()
+        client = pool.next()
+        assert pool.queue.qsize() == 3, pool.queue.qsize()
+        with tools.assert_raises(ConnectionError):
+            with pool.next():
+                assert pool.queue.qsize() == 2, pool.queue.qsize
+                raise ConnectionError("connection closed")
+        assert pool.queue.qsize() == 3, pool.queue.qsize
+        # this has cleared all 4 proxy since runtimeerror is expected to broke them all
+        with client:
+            assert pool.queue.qsize() == 3, pool.queue.qsize()
+            client.foo.bar()
+            assert call().start().foo.bar() in FakeClusterRpcProxy.mock_calls
+        assert pool.queue.qsize() == 4, pool.queue.qsize()
+
     destroy_pool()
 
 
@@ -146,6 +209,7 @@ def test_multi_pool_context_data():
 
     destroy_pool()
 
+
 @override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
 def test_pool_call_rpc_out_of_with_statement():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
@@ -159,7 +223,7 @@ def test_pool_call_rpc_out_of_with_statement():
             client.bar.foo()
         except AttributeError:
             pass
-        else:
+        else:  # pragma: nocover
             raise AssertionError("AttributeError is expected when call rpc out of with statement")
         # try again inside with statement
         with pool.next() as client:

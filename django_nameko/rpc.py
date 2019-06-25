@@ -54,8 +54,11 @@ class ClusterRpcProxyPool(object):
             self._enable_rpc_call = False
 
         def __del__(self):
-            if self._proxy:
+
+            try:
                 self._proxy.stop()
+            except AttributeError:
+                pass
             self._proxy = None
             self._rpc = None
 
@@ -77,8 +80,8 @@ class ClusterRpcProxyPool(object):
             self._enable_rpc_call = False
             try:
                 if exc_type == RuntimeError and (
-                        exc_value == "This consumer has been stopped, and can no longer be used"
-                        or exc_value == "This consumer has been disconnected, and can no longer be used"):
+                        str(exc_value) == "This consumer has been stopped, and can no longer be used"
+                        or str(exc_value) == "This consumer has been disconnected, and can no longer be used"):
                     self._pool._clear()
                     self._pool._reload()  # reload all worker
                     self.__del__()
@@ -93,8 +96,9 @@ class ClusterRpcProxyPool(object):
                             for key in self._rpc._worker_ctx.data.keys():
                                 del self._rpc._worker_ctx.data[key]
                         elif len(self._rpc._worker_ctx.data) != len(self._pool.context_data) \
-                                or cmp(self._rpc._worker_ctx.data, self._pool.context_data) != 0:
-                            # ensure that worker_ctx.data is revert back to original pool.context_data when exit of block
+                                or self._rpc._worker_ctx.data != self._pool.context_data:
+                            # ensure that worker_ctx.data is revert back to original
+                            # pool.context_data when exit of block
                             for key in self._rpc._worker_ctx.data.keys():
                                 if key not in self._pool.context_data:
                                     del self._rpc._worker_ctx.data[key]
@@ -159,6 +163,7 @@ class ClusterRpcProxyPool(object):
         """ Fetch next connection.
 
         This method is thread-safe.
+        :rtype: ClusterRpcProxyPool.RpcContext
         """
         return self.queue.get(block=block, timeout=timeout)
 
@@ -208,6 +213,7 @@ def get_pool(pool_name=None):
         # ...
         with get_pool().next() as rpc:
             rpc.mailer.send_mail(foo='bar')
+    :rtype: ClusterRpcProxyPool
     """
 
     global nameko_global_pools
@@ -218,43 +224,40 @@ def get_pool(pool_name=None):
             raise ImproperlyConfigured('NAMEKO_CONFIG must be specified')
         NAMEKO_MULTI_POOL = [name for name in NAMEKO_CONFIG.keys() if name.islower()]
         # Lazy instantiation, acquire lock first to prevent dupication init
-        create_pool_lock.acquire()
-        if not nameko_global_pools:  # double check inside lock is importance
-            if NAMEKO_MULTI_POOL:
-                nameko_global_pools = dict()
-                if 'default' not in NAMEKO_CONFIG and 'AMQP_URL' not in NAMEKO_CONFIG['default']:
-                    raise ImproperlyConfigured(
-                        'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URL"')
-                default_config = NAMEKO_CONFIG['default']
-                # default_context_data = NAMEKO_CONFIG['default']['POOL'].get('CONTEXT_DATA', dict())
-                # multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
-                for name, _config in NAMEKO_CONFIG.items():
-                    # each nameko_global_pools will have different config with default config as default
-                    if name != 'default':
-                        # overide default config with nameko_global_pools config by merging 2 dict
-                        pool_config = dict(mergedicts(default_config.copy(), _config))
-                    else:
-                        # default nameko_global_pools
-                        pool_config = default_config.copy()
-                    # extract nameko_global_pools config from RpcCluster config
-                    pool_size = pool_config.pop('POOL_SIZE', None)
-                    pool_context_data = pool_config.pop('POOL_CONTEXT_DATA', None)
-                    pool_timeout = pool_config.pop('POOL_TIMEOUT', 0)
-                    # init nameko_global_pools
-                    _pool = ClusterRpcProxyPool(pool_config, pool_size=pool_size, context_data=pool_context_data,
-                                                timeout=pool_timeout)
-                    _pool.start()
-                    # assign nameko_global_pools to corresponding name
-                    nameko_global_pools[name] = _pool
-            else:
-                # single nameko_global_pools with old style configuration
-                if not hasattr(settings, 'NAMEKO_CONFIG') or not settings.NAMEKO_CONFIG:
-                    raise ImproperlyConfigured(
-                        'NAMEKO_CONFIG must be specified and should include at least "AMQP_URL" key.')
-                nameko_global_pools = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
-                nameko_global_pools.start()  # start immediately
+        with create_pool_lock:
+            if not nameko_global_pools:  # double check inside lock is importance
+                if NAMEKO_MULTI_POOL:
+                    nameko_global_pools = dict()
+                    if 'default' not in NAMEKO_CONFIG or 'AMQP_URL' not in NAMEKO_CONFIG['default']:
+                        raise ImproperlyConfigured(
+                            'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URL"')
+                    default_config = NAMEKO_CONFIG['default']
+                    # default_context_data = NAMEKO_CONFIG['default']['POOL'].get('CONTEXT_DATA', dict())
+                    # multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
+                    for name, _config in NAMEKO_CONFIG.items():
+                        # each nameko_global_pools will have different config with default config as default
+                        if name != 'default':
+                            # overide default config with nameko_global_pools config by merging 2 dict
+                            pool_config = dict(mergedicts(default_config.copy(), _config))
+                        else:
+                            # default nameko_global_pools
+                            pool_config = default_config.copy()
+                        # extract nameko_global_pools config from RpcCluster config
+                        pool_size = pool_config.pop('POOL_SIZE', None)
+                        pool_context_data = pool_config.pop('POOL_CONTEXT_DATA', None)
+                        pool_timeout = pool_config.pop('POOL_TIMEOUT', 0)
+                        # init nameko_global_pools
+                        _pool = ClusterRpcProxyPool(pool_config, pool_size=pool_size, context_data=pool_context_data,
+                                                    timeout=pool_timeout)
+                        _pool.start()
+                        # assign nameko_global_pools to corresponding name
+                        nameko_global_pools[name] = _pool
+                else:
+                    # single nameko_global_pools with old style configuration
+
+                    nameko_global_pools = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
+                    nameko_global_pools.start()  # start immediately
         # Finish instantiation, release lock
-        create_pool_lock.release()
 
     if pool_name is not None:
         if isinstance(nameko_global_pools, dict) is False or pool_name not in nameko_global_pools:
@@ -264,7 +267,8 @@ def get_pool(pool_name=None):
             _pool = nameko_global_pools[pool_name]
     else:
         if isinstance(nameko_global_pools, dict):
-            if len(nameko_global_pools) == 0:
+            if len(nameko_global_pools) == 0:  # pragma: nocover
+                # this code is unreachable, it's not passilbe to have a dict without a key in it.
                 raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config')
             _pool = nameko_global_pools.get('default', nameko_global_pools.values()[0])
         else:
