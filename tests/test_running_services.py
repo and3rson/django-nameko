@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import, unicode_literals
+
 import logging
+import os
 import socket
 import subprocess
 import time
-
 import unittest
 
 from amqp import AccessRefused
 from django.conf import settings
 from django.test.utils import override_settings
-from nameko.exceptions import UnknownService, MethodNotFound
+from nameko.exceptions import MethodNotFound, UnknownService
 
+from django_nameko import destroy_pool, get_pool
 from nose import tools
-
-from django_nameko import get_pool, destroy_pool
+from tests.services import EchoService
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,9 @@ class RealServiceTest(unittest.TestCase):
         run the service while in the context
         :return:
         """
-        cls.runner = subprocess.Popen(('nameko', 'run', '--config', 'config.yaml', 'services'))
+        localdir = os.path.dirname(__file__)
+        config = os.path.join(localdir, 'config.yaml')
+        cls.runner = subprocess.Popen(('nameko', 'run', '--config', config, 'services'), cwd=localdir)
         time.sleep(1)
 
     @classmethod
@@ -43,8 +47,7 @@ class RealServiceTest(unittest.TestCase):
         cls.runner.kill()
 
     def test_echo_no_rpc(self):
-        import services
-        assert services.EchoService().echo(42) == (42,)
+        assert EchoService().echo(42) == (42,)
 
     @override_settings(NAMEKO_CONFIG={
         'AMQP_URI': 'amqp://guest:badpassword@localhost'

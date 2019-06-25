@@ -1,12 +1,14 @@
+import logging
+
 from amqp import ConnectionError
-from mock import patch, call
-from django_nameko import rpc, get_pool, destroy_pool
-from nose import tools
-from six.moves import queue as queue_six
-from django.test.utils import override_settings
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-import logging
+from django.test.utils import override_settings
+from mock import call, patch
+from six.moves import queue as queue_six
+
+from django_nameko import destroy_pool, get_pool, rpc
+from nose import tools
 
 settings.configure()
 logger = logging.getLogger(__name__)

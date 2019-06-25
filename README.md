@@ -8,6 +8,14 @@
 
 Django wrapper for [Nameko] microservice framework.
 
+
+# support
+tested with 
+
+- python 2.7, 3.5, 3.6, 3.7
+- django 1.11, 2.0, 2.1, 2.2
+- nameko 2.11, 2.12
+
 # How to use
 
 ```python
@@ -84,6 +92,16 @@ rpc.mailer.send_mail(bar='foo')
 #     raise AttributeError(item)
 # AttributeError: mailer
 
+```
+
+# contribute
+
+to run the tests:
+1. run a local rabbitmq
+2. execute tox 
+```bash
+docker run -d --rm -p 15672:15672 -p 5672:5672 -p 5671:5671 --name nameko-rabbitmq nameko/nameko-rabbitmq:3.6.6
+tox 
 ```
 
 # Credits

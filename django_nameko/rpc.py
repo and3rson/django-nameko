@@ -9,16 +9,17 @@
 #
 from __future__ import absolute_import
 
+import copy
 import logging
 import weakref
 from threading import Lock
 
-from six.moves import xrange as xrange_six, queue as queue_six
 from amqp.exceptions import ConnectionError
-from nameko.standalone.rpc import ClusterRpcProxy
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-import copy
+from nameko.standalone.rpc import ClusterRpcProxy
+from six.moves import queue as queue_six
+from six.moves import xrange as xrange_six
 
 _logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ class ClusterRpcProxyPool(object):
             pool_size = getattr(settings, 'NAMEKO_POOL_SIZE', 4)
         if context_data is None:  # keep this for compatiblity
             context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', None)
-        if timeout <= 0:  # keep this for compatiblity
+        if timeout is None or timeout <= 0:  # keep this for compatiblity
             timeout = getattr(settings, 'NAMEKO_TIMEOUT', None)
         self.config = copy.deepcopy(config)
         self.pool_size = pool_size
@@ -146,8 +147,8 @@ class ClusterRpcProxyPool(object):
     def _reload(self, num_of_worker=0):
         """ Reload into pool's queue with number of new worker
 
-        :param num_of_worker: 
-        :return: 
+        :param int num_of_worker:
+        :return: None
         """
         if num_of_worker <= 0:
             num_of_worker = self.pool_size
@@ -230,7 +231,8 @@ def get_pool(pool_name=None):
                     nameko_global_pools = dict()
                     if 'default' not in NAMEKO_CONFIG or 'AMQP_URL' not in NAMEKO_CONFIG['default']:
                         raise ImproperlyConfigured(
-                            'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URL"')
+                            'NAMEKO_CONFIG must be specified and should '
+                            'include at least "default" config with "AMQP_URL"')
                     default_config = NAMEKO_CONFIG['default']
                     # default_context_data = NAMEKO_CONFIG['default']['POOL'].get('CONTEXT_DATA', dict())
                     # multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
@@ -270,7 +272,7 @@ def get_pool(pool_name=None):
             if len(nameko_global_pools) == 0:  # pragma: nocover
                 # this code is unreachable, it's not passilbe to have a dict without a key in it.
                 raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config')
-            _pool = nameko_global_pools.get('default', nameko_global_pools.values()[0])
+            _pool = nameko_global_pools.get('default', next(iter(nameko_global_pools.values())))
         else:
             _pool = nameko_global_pools
 
