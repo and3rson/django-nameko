@@ -38,6 +38,8 @@ jobs:
     python: 2.7
     script: skip
     install: skip
+    on:
+      repo: and3rson/django-nameko
     deploy:
       provider: pypi
       user: tranvietanh1991
