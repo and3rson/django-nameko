@@ -92,14 +92,10 @@ class ClusterRpcProxyPool(object):
         def __exit__(self, exc_type, exc_value, traceback, **kwargs):
             self._enable_rpc_call = False
             try:
-                if exc_type == RuntimeError and (
-                        str(exc_value) == "This consumer has been stopped, and can no longer be used"
-                        or str(exc_value) == "This consumer has been disconnected, and can no longer be used"):
-                    self._pool._clear()
-                    self._pool._reload()  # reload all worker
+                if exc_type == RuntimeError:
+                    self._pool._reload(1)  # reload atmost 1 worker
                     self.__del__()
-                elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
-                    # self.pool._clear()
+                elif exc_type == ConnectionError:
                     self._pool._reload(1)  # reload atmost 1 worker
                     self.__del__()
                 else:
@@ -265,14 +261,12 @@ def get_pool(pool_name=None):
                         # init nameko_global_pools
                         _pool = ClusterRpcProxyPool(pool_config, pool_size=pool_size, context_data=pool_context_data,
                                                     timeout=pool_timeout)
-                        _pool.start()
                         # assign nameko_global_pools to corresponding name
                         nameko_global_pools[name] = _pool
                 else:
                     # single nameko_global_pools with old style configuration
-
                     nameko_global_pools = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
-                    nameko_global_pools.start()  # start immediately
+
         # Finish instantiation, release lock
 
     if pool_name is not None:
@@ -289,7 +283,8 @@ def get_pool(pool_name=None):
             _pool = nameko_global_pools.get('default', next(iter(nameko_global_pools.values())))
         else:
             _pool = nameko_global_pools
-
+    if not _pool.is_started:
+        _pool.start()
     return _pool
 
 
