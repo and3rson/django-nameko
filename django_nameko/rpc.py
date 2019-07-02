@@ -50,12 +50,15 @@ class ClusterRpcProxyPool(object):
         def __init__(self, pool, config):
             self._pool = weakref.proxy(pool)
             self._proxy = ClusterRpcProxy(config, context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
-            self._rpc = self._proxy.start()
+            self._rpc = None
             self._enable_rpc_call = False
 
         def __del__(self):
             if self._proxy:
-                self._proxy.stop()
+                try:
+                    self._proxy.stop()
+                except:  # ignore any error since the object is being garbage collected
+                    pass
             self._proxy = None
             self._rpc = None
 
@@ -70,6 +73,18 @@ class ClusterRpcProxyPool(object):
             return getattr(self._rpc, item)
 
         def __enter__(self):
+            if self._proxy is None:
+                self._pool._reload(1)  # reload 1 worker and raise error
+                self.__del__()
+                raise RuntimeError("This RpcContext has been stopped already")
+            elif self._rpc is None:
+                # try to start the RPC proxy if it haven't been started yet (first RPC call of this connection)
+                try:
+                    self._rpc = self._proxy.start()
+                except (IOError, ConnectionError):  # if failed then reload 1 worker and reraise
+                    self._pool._reload(1)  # reload 1 worker
+                    self.__del__()
+                    raise
             self._enable_rpc_call = True
             return weakref.proxy(self)
 
@@ -135,7 +150,7 @@ class ClusterRpcProxyPool(object):
     def _clear(self):
         count = 0
         while self.queue.empty() is False:
-            self.next()
+            self.next(block=False).__del__()
             count += 1
         _logger.debug("Clear %d worker", count)
 
@@ -160,6 +175,8 @@ class ClusterRpcProxyPool(object):
 
         This method is thread-safe.
         """
+        if timeout is None:
+            timeout = self.timeout
         return self.queue.get(block=block, timeout=timeout)
 
     def _put_back(self, ctx):
