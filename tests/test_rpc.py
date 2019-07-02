@@ -14,7 +14,7 @@ settings.configure()
 logger = logging.getLogger(__name__)
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'))
 def test_cluster_proxy_pool():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool = rpc.ClusterRpcProxyPool(dict(), pool_size=2)
@@ -38,7 +38,7 @@ def test_cluster_proxy_pool():
         pool.stop()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'))
 def test_get_pool():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool = get_pool()
@@ -48,7 +48,7 @@ def test_get_pool():
         destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'), NAMEKO_POOL_SIZE=5)
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'), NAMEKO_POOL_SIZE=5)
 def test_custom_pool_size():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool = get_pool()
@@ -74,13 +74,13 @@ def test_abd_settings():
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG={'pool1': dict(AMQP_URL='amqp://')})
+@override_settings(NAMEKO_CONFIG={'pool1': dict(AMQP_URI='amqp://')})
 def test_missing_default_settings():
     tools.assert_raises(ImproperlyConfigured, get_pool)
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'), NAMEKO_CONTEXT_DATA={"data": 123})
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'), NAMEKO_CONTEXT_DATA={"data": 123})
 def test_context_data():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool = get_pool()
@@ -92,29 +92,33 @@ def test_context_data():
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'))
 def test_runtime_error():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool = get_pool()
         assert pool.queue.qsize() == 4, pool.queue.qsize()
         client = pool.next()
+        # getting client out of pool without using context will make 1 connection go missing
         assert pool.queue.qsize() == 3, pool.queue.qsize()
-        with tools.assert_raises(RuntimeError):
-            with pool.next():
-                assert pool.queue.qsize() == 2, pool.queue.qsize()
-                raise RuntimeError("This consumer has been stopped, and can no longer be used")
-        # this has cleared all 4 proxy since runtimeerror is expected to broke them all
-        assert pool.queue.qsize() == 4, pool.queue.qsize
+
         with client:
-            assert pool.queue.qsize() == 4, pool.queue.qsize()
             client.foo.bar()
             assert call().start().foo.bar() in FakeClusterRpcProxy.mock_calls
-        assert pool.queue.qsize() == 5, pool.queue.qsize()
+            client._proxy = None  # this line will make this client become unusable as it is stopped
+
+        assert pool.queue.qsize() == 4, pool.queue.qsize()
+        with tools.assert_raises(RuntimeError):
+            # try to loop through all connection in pool, the last one will failed due to RuntimeError
+            for i in range(4):
+                with pool.next():
+                    assert pool.queue.qsize() == 3, pool.queue.qsize()
+        # expect the pool to recover the stopped client
+        assert pool.queue.qsize() == 4, pool.queue.qsize()
 
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'))
 def test_connection_error():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool = get_pool()
@@ -138,13 +142,13 @@ def test_connection_error():
 
 @override_settings(NAMEKO_CONFIG={
     'default': {
-        'AMQP_URL': 'amqp://'
+        'AMQP_URI': 'amqp://'
     },
     'pool1': {
         'POOL_SIZE': 8,
     },
     'pool2': {
-        'AMQP_URL': 'amqp://pool2'
+        'AMQP_URI': 'amqp://pool2'
     }
 })
 def test_multi_pool():
@@ -164,7 +168,7 @@ def test_multi_pool():
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'))
 def test_multi_pool_no_config():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         tools.assert_raises(ImproperlyConfigured, lambda: get_pool('pool1'))
@@ -173,17 +177,17 @@ def test_multi_pool_no_config():
 
 @override_settings(NAMEKO_CONFIG={
     'default': {
-        'AMQP_URL': 'amqp://',
+        'AMQP_URI': 'amqp://',
         'POOL_SIZE': 4,
         'POOL_CONTEXT_DATA': {"common": "multi"},
         'POOL_TIMEOUT': None
     },
     'pool1': {
-        'AMQP_URL': 'amqp://pool2',
+        'AMQP_URI': 'amqp://pool2',
         'POOL_CONTEXT_DATA': {"name": "pool1", "data": 123},
     },
     'pool2': {
-        'AMQP_URL': 'amqp://pool3',
+        'AMQP_URI': 'amqp://pool3',
         'POOL_CONTEXT_DATA': {"name": "pool2", "data": 321},
         'POOL_TIMEOUT': 60
     },
@@ -212,7 +216,7 @@ def test_multi_pool_context_data():
     destroy_pool()
 
 
-@override_settings(NAMEKO_CONFIG=dict(AMQP_URL='amqp://'))
+@override_settings(NAMEKO_CONFIG=dict(AMQP_URI='amqp://'))
 def test_pool_call_rpc_out_of_with_statement():
     with patch('django_nameko.rpc.ClusterRpcProxy') as FakeClusterRpcProxy:
         pool = get_pool()

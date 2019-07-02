@@ -51,15 +51,15 @@ class ClusterRpcProxyPool(object):
         def __init__(self, pool, config):
             self._pool = weakref.proxy(pool)
             self._proxy = ClusterRpcProxy(config, context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
-            self._rpc = self._proxy.start()
+            self._rpc = None
             self._enable_rpc_call = False
 
         def __del__(self):
-
-            try:
-                self._proxy.stop()
-            except AttributeError:
-                pass
+            if self._proxy:
+                try:
+                    self._proxy.stop()
+                except:  # ignore any error since the object is being garbage collected
+                    pass
             self._proxy = None
             self._rpc = None
 
@@ -74,20 +74,31 @@ class ClusterRpcProxyPool(object):
             return getattr(self._rpc, item)
 
         def __enter__(self):
+            if self._proxy is None:
+                self._pool._reload(1)  # reload 1 worker and raise error
+                self.__del__()
+                raise RuntimeError("This RpcContext has been stopped already")
+            elif self._rpc is None:
+                # try to start the RPC proxy if it haven't been started yet (first RPC call of this connection)
+                try:
+                    self._rpc = self._proxy.start()
+                except (IOError, ConnectionError):  # if failed then reload 1 worker and reraise
+                    self._pool._reload(1)  # reload 1 worker
+                    self.__del__()
+                    raise
             self._enable_rpc_call = True
             return weakref.proxy(self)
 
         def __exit__(self, exc_type, exc_value, traceback, **kwargs):
             self._enable_rpc_call = False
             try:
-                if exc_type == RuntimeError and (
-                        str(exc_value) == "This consumer has been stopped, and can no longer be used"
-                        or str(exc_value) == "This consumer has been disconnected, and can no longer be used"):
-                    self._pool._clear()
-                    self._pool._reload()  # reload all worker
+                if exc_type == RuntimeError and str(exc_value) in (
+                        "This consumer has been stopped, and can no longer be used",
+                        "This consumer has been disconnected, and can no longer be used",
+                        "This RpcContext has been stopped already"):
+                    self._pool._reload(1)  # reload all worker
                     self.__del__()
-                elif exc_type == ConnectionError:  # maybe check for RpcTimeout, as well
-                    # self.pool._clear()
+                elif exc_type == ConnectionError:
                     self._pool._reload(1)  # reload atmost 1 worker
                     self.__del__()
                 else:
@@ -116,13 +127,14 @@ class ClusterRpcProxyPool(object):
             pool_size = getattr(settings, 'NAMEKO_POOL_SIZE', 4)
         if context_data is None:  # keep this for compatiblity
             context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', None)
-        if timeout is None or timeout <= 0:  # keep this for compatiblity
+        if timeout is not None and timeout <= 0:  # keep this for compatiblity
             timeout = getattr(settings, 'NAMEKO_TIMEOUT', None)
         self.config = copy.deepcopy(config)
         self.pool_size = pool_size
         self.context_data = copy.deepcopy(context_data)
         self.timeout = timeout
         self.state = 'NOT_STARTED'
+        self.queue = None
 
     def start(self):
         """ Populate pool with connections.
@@ -140,7 +152,7 @@ class ClusterRpcProxyPool(object):
     def _clear(self):
         count = 0
         while self.queue.empty() is False:
-            self.next()
+            self.next(block=False).__del__()
             count += 1
         _logger.debug("Clear %d worker", count)
 
@@ -166,6 +178,8 @@ class ClusterRpcProxyPool(object):
         This method is thread-safe.
         :rtype: ClusterRpcProxyPool.RpcContext
         """
+        if timeout is None:
+            timeout = self.timeout
         return self.queue.get(block=block, timeout=timeout)
 
     def _put_back(self, ctx):
@@ -174,19 +188,21 @@ class ClusterRpcProxyPool(object):
     def stop(self):
         """ Stop queue and remove all connections from pool.
         """
-        while True:
-            try:
-                ctx = self.queue.get_nowait()
-                ctx.__del__()
-            except queue_six.Empty:
-                break
-        self.queue.queue.clear()
-        self.queue = None
+        if self.queue:
+            while True:
+                try:
+                    ctx = self.queue.get_nowait()
+                    ctx.__del__()
+                except queue_six.Empty:
+                    break
+            self.queue.queue.clear()
+            self.queue = None
 
 
 nameko_global_pools = None
 create_pool_lock = Lock()
 
+WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URI"'
 
 def mergedicts(dict1, dict2):
     for k in set(dict1.keys()).union(dict2.keys()):
@@ -229,10 +245,15 @@ def get_pool(pool_name=None):
             if not nameko_global_pools:  # double check inside lock is importance
                 if NAMEKO_MULTI_POOL:
                     nameko_global_pools = dict()
-                    if 'default' not in NAMEKO_CONFIG or 'AMQP_URL' not in NAMEKO_CONFIG['default']:
-                        raise ImproperlyConfigured(
-                            'NAMEKO_CONFIG must be specified and should '
-                            'include at least "default" config with "AMQP_URL"')
+
+                    if 'default' not in NAMEKO_CONFIG:
+                        raise ImproperlyConfigured(WRONG_CONFIG_MSG)
+                    else:
+                        if 'AMQP_URL' in NAMEKO_CONFIG['default']:  # compatible code to prevent typo mistake
+                            NAMEKO_CONFIG['default']['AMQP_URI'] = NAMEKO_CONFIG['default'].pop('AMQP_URL')
+                        if 'AMQP_URI' not in NAMEKO_CONFIG['default']:
+                            raise ImproperlyConfigured(WRONG_CONFIG_MSG)
+
                     default_config = NAMEKO_CONFIG['default']
                     # default_context_data = NAMEKO_CONFIG['default']['POOL'].get('CONTEXT_DATA', dict())
                     # multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
@@ -251,14 +272,12 @@ def get_pool(pool_name=None):
                         # init nameko_global_pools
                         _pool = ClusterRpcProxyPool(pool_config, pool_size=pool_size, context_data=pool_context_data,
                                                     timeout=pool_timeout)
-                        _pool.start()
                         # assign nameko_global_pools to corresponding name
                         nameko_global_pools[name] = _pool
                 else:
                     # single nameko_global_pools with old style configuration
-
                     nameko_global_pools = ClusterRpcProxyPool(settings.NAMEKO_CONFIG)
-                    nameko_global_pools.start()  # start immediately
+
         # Finish instantiation, release lock
 
     if pool_name is not None:
@@ -271,11 +290,12 @@ def get_pool(pool_name=None):
         if isinstance(nameko_global_pools, dict):
             if len(nameko_global_pools) == 0:  # pragma: nocover
                 # this code is unreachable, it's not passilbe to have a dict without a key in it.
-                raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config')
+                raise ImproperlyConfigured(WRONG_CONFIG_MSG)
             _pool = nameko_global_pools.get('default', next(iter(nameko_global_pools.values())))
         else:
             _pool = nameko_global_pools
-
+    if not _pool.is_started:
+        _pool.start()
     return _pool
 
 

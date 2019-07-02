@@ -1,10 +1,11 @@
 # django-nameko
 
-## Travis-CI
+## Travis-CI  [![Coverage Status](https://coveralls.io/repos/github/and3rson/django-nameko/badge.svg)](https://coveralls.io/github/and3rson/django-nameko)
 | Branch  | Build status                             |
 | ------- | ---------------------------------------- |
 | master  | [![Build Status](https://travis-ci.org/and3rson/django-nameko.svg?branch=master)](https://travis-ci.org/and3rson/django-nameko) |
 | develop | [![Build Status](https://travis-ci.org/and3rson/django-nameko.svg?branch=develop)](https://travis-ci.org/and3rson/django-nameko) |
+
 
 Django wrapper for [Nameko] microservice framework.
 
@@ -37,7 +38,7 @@ pip install django-nameko
 ```python
 # Config to be passed to ClusterRpcProxy 
 NAMEKO_CONFIG = { 
-    'AMQP_URL': 'amqp://127.0.0.1:5672/'
+    'AMQP_URI': 'amqp://127.0.0.1:5672/'
 }  
 
 # Number of proxies to create 
@@ -54,17 +55,17 @@ NAMEKO_CONTEXT_DATA = {
 # Every pool with pool name different than 'default' will use 'default' pool config as default configuration
 NAMEKO_CONFIG={
     'default': {
-        'AMQP_URL': 'amqp://',
+        'AMQP_URI': 'amqp://',
         'POOL_SIZE': 4,
         'POOL_CONTEXT_DATA': {"common": "multi"},
         'POOL_TIMEOUT': None
     },
     'pool1': {
-        'AMQP_URL': 'amqp://pool2',
+        'AMQP_URI': 'amqp://pool2',
         'POOL_CONTEXT_DATA': {"name": "pool1", "data": 123},
     },
     'pool2': {
-        'AMQP_URL': 'amqp://pool3',
+        'AMQP_URI': 'amqp://pool3',
         'POOL_CONTEXT_DATA': {"name": "pool2", "data": 321},
         'POOL_TIMEOUT': 60
     },
@@ -100,7 +101,10 @@ to run the tests:
 1. run a local rabbitmq
 2. execute tox 
 ```bash
-docker run -d --rm -p 15672:15672 -p 5672:5672 -p 5671:5671 --name nameko-rabbitmq nameko/nameko-rabbitmq:3.6.6
+docker run --rm -p 15672:15672 -p 5672:5672 -p 5671:5671 --name nameko-rabbitmq nameko/nameko-rabbitmq:3.6.6
+# open another shell then run
+python setup.py test
+# to run full test with coverage use
 tox 
 ```
 
