@@ -202,6 +202,7 @@ class ClusterRpcProxyPool(object):
 nameko_global_pools = None
 create_pool_lock = Lock()
 
+WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URI"'
 
 def mergedicts(dict1, dict2):
     for k in set(dict1.keys()).union(dict2.keys()):
@@ -244,10 +245,15 @@ def get_pool(pool_name=None):
             if not nameko_global_pools:  # double check inside lock is importance
                 if NAMEKO_MULTI_POOL:
                     nameko_global_pools = dict()
-                    if 'default' not in NAMEKO_CONFIG or 'AMQP_URL' not in NAMEKO_CONFIG['default']:
-                        raise ImproperlyConfigured(
-                            'NAMEKO_CONFIG must be specified and should '
-                            'include at least "default" config with "AMQP_URL"')
+
+                    if 'default' not in NAMEKO_CONFIG:
+                        raise ImproperlyConfigured(WRONG_CONFIG_MSG)
+                    else:
+                        if 'AMQP_URL' in NAMEKO_CONFIG['default']:  # compatible code to prevent typo mistake
+                            NAMEKO_CONFIG['default']['AMQP_URI'] = NAMEKO_CONFIG['default'].pop('AMQP_URL')
+                        if 'AMQP_URI' not in NAMEKO_CONFIG['default']:
+                            raise ImproperlyConfigured(WRONG_CONFIG_MSG)
+
                     default_config = NAMEKO_CONFIG['default']
                     # default_context_data = NAMEKO_CONFIG['default']['POOL'].get('CONTEXT_DATA', dict())
                     # multi_context_data = getattr(settings, 'NAMEKO_MULTI_CONTEXT_DATA', dict())
@@ -284,7 +290,7 @@ def get_pool(pool_name=None):
         if isinstance(nameko_global_pools, dict):
             if len(nameko_global_pools) == 0:  # pragma: nocover
                 # this code is unreachable, it's not passilbe to have a dict without a key in it.
-                raise ImproperlyConfigured('NAMEKO_CONFIG must include at least 1 "default" config')
+                raise ImproperlyConfigured(WRONG_CONFIG_MSG)
             _pool = nameko_global_pools.get('default', next(iter(nameko_global_pools.values())))
         else:
             _pool = nameko_global_pools

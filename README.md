@@ -38,7 +38,7 @@ pip install django-nameko
 ```python
 # Config to be passed to ClusterRpcProxy 
 NAMEKO_CONFIG = { 
-    'AMQP_URL': 'amqp://127.0.0.1:5672/'
+    'AMQP_URI': 'amqp://127.0.0.1:5672/'
 }  
 
 # Number of proxies to create 
@@ -55,17 +55,17 @@ NAMEKO_CONTEXT_DATA = {
 # Every pool with pool name different than 'default' will use 'default' pool config as default configuration
 NAMEKO_CONFIG={
     'default': {
-        'AMQP_URL': 'amqp://',
+        'AMQP_URI': 'amqp://',
         'POOL_SIZE': 4,
         'POOL_CONTEXT_DATA': {"common": "multi"},
         'POOL_TIMEOUT': None
     },
     'pool1': {
-        'AMQP_URL': 'amqp://pool2',
+        'AMQP_URI': 'amqp://pool2',
         'POOL_CONTEXT_DATA': {"name": "pool1", "data": 123},
     },
     'pool2': {
-        'AMQP_URL': 'amqp://pool3',
+        'AMQP_URI': 'amqp://pool3',
         'POOL_CONTEXT_DATA': {"name": "pool2", "data": 321},
         'POOL_TIMEOUT': 60
     },
