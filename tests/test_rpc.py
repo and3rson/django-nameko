@@ -98,18 +98,22 @@ def test_runtime_error():
         pool = get_pool()
         assert pool.queue.qsize() == 4, pool.queue.qsize()
         client = pool.next()
+        # getting client out of pool without using context will make 1 connection go missing
         assert pool.queue.qsize() == 3, pool.queue.qsize()
-        with tools.assert_raises(RuntimeError):
-            with pool.next():
-                assert pool.queue.qsize() == 2, pool.queue.qsize()
-                raise RuntimeError("This consumer has been stopped, and can no longer be used")
-        # this has cleared all 4 proxy since runtimeerror is expected to broke them all
-        assert pool.queue.qsize() == 4, pool.queue.qsize
+
         with client:
-            assert pool.queue.qsize() == 4, pool.queue.qsize()
             client.foo.bar()
             assert call().start().foo.bar() in FakeClusterRpcProxy.mock_calls
-        assert pool.queue.qsize() == 5, pool.queue.qsize()
+            client._proxy = None  # this line will make this client become unusable as it is stopped
+
+        assert pool.queue.qsize() == 4, pool.queue.qsize()
+        with tools.assert_raises(RuntimeError):
+            # try to loop through all connection in pool, the last one will failed due to RuntimeError
+            for i in range(4):
+                with pool.next():
+                    assert pool.queue.qsize() == 3, pool.queue.qsize()
+        # expect the pool to recover the stopped client
+        assert pool.queue.qsize() == 4, pool.queue.qsize()
 
     destroy_pool()
 

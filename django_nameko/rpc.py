@@ -92,8 +92,11 @@ class ClusterRpcProxyPool(object):
         def __exit__(self, exc_type, exc_value, traceback, **kwargs):
             self._enable_rpc_call = False
             try:
-                if exc_type == RuntimeError:
-                    self._pool._reload(1)  # reload atmost 1 worker
+                if exc_type == RuntimeError and str(exc_value) in (
+                        "This consumer has been stopped, and can no longer be used",
+                        "This consumer has been disconnected, and can no longer be used",
+                        "This RpcContext has been stopped already"):
+                    self._pool._reload(1)  # reload all worker
                     self.__del__()
                 elif exc_type == ConnectionError:
                     self._pool._reload(1)  # reload atmost 1 worker
@@ -131,6 +134,7 @@ class ClusterRpcProxyPool(object):
         self.context_data = copy.deepcopy(context_data)
         self.timeout = timeout
         self.state = 'NOT_STARTED'
+        self.queue = None
 
     def start(self):
         """ Populate pool with connections.
@@ -184,14 +188,15 @@ class ClusterRpcProxyPool(object):
     def stop(self):
         """ Stop queue and remove all connections from pool.
         """
-        while True:
-            try:
-                ctx = self.queue.get_nowait()
-                ctx.__del__()
-            except queue_six.Empty:
-                break
-        self.queue.queue.clear()
-        self.queue = None
+        if self.queue:
+            while True:
+                try:
+                    ctx = self.queue.get_nowait()
+                    ctx.__del__()
+                except queue_six.Empty:
+                    break
+            self.queue.queue.clear()
+            self.queue = None
 
 
 nameko_global_pools = None
