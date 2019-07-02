@@ -127,7 +127,7 @@ class ClusterRpcProxyPool(object):
             pool_size = getattr(settings, 'NAMEKO_POOL_SIZE', 4)
         if context_data is None:  # keep this for compatiblity
             context_data = getattr(settings, 'NAMEKO_CONTEXT_DATA', None)
-        if timeout is None or timeout <= 0:  # keep this for compatiblity
+        if timeout is not None and timeout <= 0:  # keep this for compatiblity
             timeout = getattr(settings, 'NAMEKO_TIMEOUT', None)
         self.config = copy.deepcopy(config)
         self.pool_size = pool_size

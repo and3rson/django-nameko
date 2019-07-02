@@ -1,10 +1,11 @@
 # django-nameko
 
-## Travis-CI
+## Travis-CI  [![Coverage Status](https://coveralls.io/repos/github/and3rson/django-nameko/badge.svg)](https://coveralls.io/github/and3rson/django-nameko)
 | Branch  | Build status                             |
 | ------- | ---------------------------------------- |
 | master  | [![Build Status](https://travis-ci.org/and3rson/django-nameko.svg?branch=master)](https://travis-ci.org/and3rson/django-nameko) |
 | develop | [![Build Status](https://travis-ci.org/and3rson/django-nameko.svg?branch=develop)](https://travis-ci.org/and3rson/django-nameko) |
+
 
 Django wrapper for [Nameko] microservice framework.
 
@@ -100,7 +101,10 @@ to run the tests:
 1. run a local rabbitmq
 2. execute tox 
 ```bash
-docker run -d --rm -p 15672:15672 -p 5672:5672 -p 5671:5671 --name nameko-rabbitmq nameko/nameko-rabbitmq:3.6.6
+docker run --rm -p 15672:15672 -p 5672:5672 -p 5671:5671 --name nameko-rabbitmq nameko/nameko-rabbitmq:3.6.6
+# open another shell then run
+python setup.py test
+# to run full test with coverage use
 tox 
 ```
 
