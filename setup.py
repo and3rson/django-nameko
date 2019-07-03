@@ -27,7 +27,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'nameko>=2.11.0',
-        'django>=1.10,<2.0'
+        'django>=1.10'
     ],
     test_suite='nose.collector',
     tests_require=['nose'],
