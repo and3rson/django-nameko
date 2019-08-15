@@ -12,9 +12,10 @@ from __future__ import absolute_import
 import copy
 import logging
 import weakref
-from threading import Lock
-
-from amqp.exceptions import ConnectionError
+from threading import Lock, Thread
+import time
+import socket
+from amqp.exceptions import ConnectionError  # heartbeat failed will raise this error: ConnectionForced
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from nameko.standalone.rpc import ClusterRpcProxy
@@ -133,6 +134,8 @@ class ClusterRpcProxyPool(object):
         self.pool_size = pool_size
         self.context_data = copy.deepcopy(context_data)
         self.timeout = timeout
+        self.heartbeat = self.config.get('HEARTBEAT', None)
+        self._heartbeat_check_thread = None
         self.state = 'NOT_STARTED'
         self.queue = None
 
@@ -144,6 +147,10 @@ class ClusterRpcProxyPool(object):
             ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
             self.queue.put(ctx)
         self.state = 'STARTED'
+        if self.heartbeat:
+            self._heartbeat_check_thread = Thread(target=self.heartbeat_check)
+            self._heartbeat_check_thread.start()
+            _logger.debug("Heart beat check thread started")
 
     @property
     def is_started(self):
@@ -197,12 +204,55 @@ class ClusterRpcProxyPool(object):
                     break
             self.queue.queue.clear()
             self.queue = None
+        self.state = 'STOPPED'
+        if self._heartbeat_check_thread:
+            self._heartbeat_check_thread.join()
+            _logger.debug("Heart beat check thread stopped")
+
+    def heartbeat_check(self):
+        RATE = 2
+        while self.heartbeat and self.state == 'STARTED':
+            time.sleep(self.heartbeat/abs(RATE))
+            _logger.debug("Heart beating all connections")
+            for i in xrange_six(self.pool_size):
+                ctx = None
+                try:
+                    ctx = self.queue.get_nowait()
+                except queue_six.Empty:
+                    break
+                else:
+                    if ctx._rpc:
+                        _logger.debug("Heart beating ...")
+                        try:
+                            try:
+                                ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
+                            except socket.timeout:
+                                pass
+                            ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
+
+                        except ConnectionError as exc:
+                            _logger.info("Heart beat Failed. Connection is broken due to: %s", str(exc))
+                            ctx.__del__()
+                            ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
+                        else:
+                            _logger.debug("Heart beat OK")
+                finally:
+                    if ctx is not None:
+                        self.queue.put_nowait(ctx)
+
+    def __del__(self):
+        if self.state != 'STOPPED':
+            try:
+                self.stop()
+            except:  # ignore any error since the object is being garbage collected
+                pass
 
 
 nameko_global_pools = None
 create_pool_lock = Lock()
 
 WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URI"'
+
 
 def mergedicts(dict1, dict2):
     for k in set(dict1.keys()).union(dict2.keys()):
