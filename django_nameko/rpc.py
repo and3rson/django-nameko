@@ -162,7 +162,7 @@ class ClusterRpcProxyPool(object):
         while self.queue.empty() is False:
             self.next(block=False).__del__()
             count += 1
-        _logger.debug("Clear %d worker", count)
+        _logger.debug("Clear %d connection", count)
 
     def _reload(self, num_of_worker=0):
         """ Reload into pool's queue with number of new worker
@@ -178,7 +178,7 @@ class ClusterRpcProxyPool(object):
                 ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
                 self.queue.put_nowait(ctx)
                 count += 1
-        _logger.debug("Reload %d worker", count)
+        _logger.debug("Reload %d connection", count)
 
     def next(self, block=True, timeout=None):
         """ Fetch next connection.
@@ -214,7 +214,7 @@ class ClusterRpcProxyPool(object):
         RATE = 2
         while self.heartbeat and self.state == 'STARTED':
             time.sleep(self.heartbeat/abs(RATE))
-            _logger.debug("Heart beating all connections")
+            count_ok = 0
             for _ in xrange_six(self.pool_size):
                 ctx = None
                 try:
@@ -229,14 +229,16 @@ class ClusterRpcProxyPool(object):
                             except socket.timeout:
                                 pass
                             ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
-
-                        except ConnectionError as exc:
+                        except (ConnectionError, socket.error) as exc:
                             _logger.info("Heart beat failed. System will auto recover broken connection: %s", str(exc))
                             ctx.__del__()
                             ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
+                        else:
+                            count_ok += 1
                 finally:
                     if ctx is not None:
                         self.queue.put_nowait(ctx)
+            _logger.debug("Heart beat %d OK", count_ok)
 
     def __del__(self):
         if self.state != 'STOPPED':

@@ -7,6 +7,7 @@ import socket
 import subprocess
 import time
 import unittest
+import sys
 
 from amqp import AccessRefused
 from django.conf import settings
@@ -60,18 +61,18 @@ class RealServiceTest(unittest.TestCase):
 
         destroy_pool()
 
-    #  TODO: for some reason this test is broken and make tox hang forerver
-    # @override_settings(NAMEKO_CONFIG={
-    #     'AMQP_URI': 'amqp://guest:guest@localhost',
-    #     'TIMEOUT': 1
-    # })
-    # def test_pool_call_unknown_service(self):
-    #     with tools.assert_raises(UnknownService):
-    #         pool = get_pool()
-    #         with pool.next() as client:
-    #             client.unknown_service.echo(42)
-    #
-    #     destroy_pool()
+    @unittest.skip("for some reason this test is broken and make tox hang forerver")
+    @override_settings(NAMEKO_CONFIG={
+        'AMQP_URI': 'amqp://guest:guest@localhost',
+        'TIMEOUT': 1
+    })
+    def test_pool_call_unknown_service(self):
+        with tools.assert_raises(UnknownService):
+            pool = get_pool()
+            with pool.next() as client:
+                client.unknown_service.echo(42)
+
+        destroy_pool()
 
     @override_settings(NAMEKO_CONFIG=config)
     def test_pool_call_method_notdefined(self):
@@ -93,6 +94,7 @@ class RealServiceTest(unittest.TestCase):
 
         destroy_pool()
 
+    @unittest.skipIf(sys.version_info > (3, 6), "currently eventlet is broken on python 3.7+")
     @override_settings(NAMEKO_CONFIG=config)
     def test_pool_call_existing_service(self):
         pool = get_pool()
