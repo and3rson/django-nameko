@@ -12,12 +12,14 @@ from __future__ import absolute_import
 import copy
 import logging
 import weakref
-from threading import Lock
-
-from amqp.exceptions import ConnectionError
+from threading import Lock, Thread
+import time
+import socket
+from amqp.exceptions import ConnectionError  # heartbeat failed will raise this error: ConnectionForced
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from nameko.standalone.rpc import ClusterRpcProxy
+from nameko.constants import AMQP_URI_CONFIG_KEY, HEARTBEAT_CONFIG_KEY
 from six.moves import queue as queue_six
 from six.moves import xrange as xrange_six
 
@@ -133,6 +135,8 @@ class ClusterRpcProxyPool(object):
         self.pool_size = pool_size
         self.context_data = copy.deepcopy(context_data)
         self.timeout = timeout
+        self.heartbeat = self.config.get(HEARTBEAT_CONFIG_KEY)
+        self._heartbeat_check_thread = None
         self.state = 'NOT_STARTED'
         self.queue = None
 
@@ -144,6 +148,10 @@ class ClusterRpcProxyPool(object):
             ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
             self.queue.put(ctx)
         self.state = 'STARTED'
+        if self.heartbeat:
+            self._heartbeat_check_thread = Thread(target=self.heartbeat_check)
+            self._heartbeat_check_thread.start()
+            _logger.debug("Heart beat check thread started")
 
     @property
     def is_started(self):
@@ -154,7 +162,7 @@ class ClusterRpcProxyPool(object):
         while self.queue.empty() is False:
             self.next(block=False).__del__()
             count += 1
-        _logger.debug("Clear %d worker", count)
+        _logger.debug("Clear %d connection", count)
 
     def _reload(self, num_of_worker=0):
         """ Reload into pool's queue with number of new worker
@@ -170,7 +178,7 @@ class ClusterRpcProxyPool(object):
                 ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
                 self.queue.put_nowait(ctx)
                 count += 1
-        _logger.debug("Reload %d worker", count)
+        _logger.debug("Reload %d connection", count)
 
     def next(self, block=True, timeout=None):
         """ Fetch next connection.
@@ -197,12 +205,54 @@ class ClusterRpcProxyPool(object):
                     break
             self.queue.queue.clear()
             self.queue = None
+        self.state = 'STOPPED'
+        if self._heartbeat_check_thread:
+            self._heartbeat_check_thread.join()
+            _logger.debug("Heart beat check thread stopped")
+
+    def heartbeat_check(self):
+        RATE = 2
+        while self.heartbeat and self.state == 'STARTED':
+            time.sleep(self.heartbeat/abs(RATE))
+            count_ok = 0
+            for _ in xrange_six(self.pool_size):
+                ctx = None
+                try:
+                    ctx = self.queue.get_nowait()
+                except queue_six.Empty:
+                    break
+                else:
+                    if ctx._rpc:
+                        try:
+                            try:
+                                ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
+                            except socket.timeout:
+                                pass
+                            ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
+                        except (ConnectionError, socket.error) as exc:
+                            _logger.info("Heart beat failed. System will auto recover broken connection: %s", str(exc))
+                            ctx.__del__()
+                            ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
+                        else:
+                            count_ok += 1
+                finally:
+                    if ctx is not None:
+                        self.queue.put_nowait(ctx)
+            _logger.debug("Heart beat %d OK", count_ok)
+
+    def __del__(self):
+        if self.state != 'STOPPED':
+            try:
+                self.stop()
+            except:  # ignore any error since the object is being garbage collected
+                pass
 
 
 nameko_global_pools = None
 create_pool_lock = Lock()
 
-WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URI"'
+WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "%s"'%(AMQP_URI_CONFIG_KEY)
+
 
 def mergedicts(dict1, dict2):
     for k in set(dict1.keys()).union(dict2.keys()):
@@ -250,8 +300,8 @@ def get_pool(pool_name=None):
                         raise ImproperlyConfigured(WRONG_CONFIG_MSG)
                     else:
                         if 'AMQP_URL' in NAMEKO_CONFIG['default']:  # compatible code to prevent typo mistake
-                            NAMEKO_CONFIG['default']['AMQP_URI'] = NAMEKO_CONFIG['default'].pop('AMQP_URL')
-                        if 'AMQP_URI' not in NAMEKO_CONFIG['default']:
+                            NAMEKO_CONFIG['default'][AMQP_URI_CONFIG_KEY] = NAMEKO_CONFIG['default'].pop('AMQP_URL')
+                        if AMQP_URI_CONFIG_KEY not in NAMEKO_CONFIG['default']:
                             raise ImproperlyConfigured(WRONG_CONFIG_MSG)
 
                     default_config = NAMEKO_CONFIG['default']
