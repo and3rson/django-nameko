@@ -19,6 +19,7 @@ from amqp.exceptions import ConnectionError  # heartbeat failed will raise this 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from nameko.standalone.rpc import ClusterRpcProxy
+from nameko.constants import AMQP_URI_CONFIG_KEY, HEARTBEAT_CONFIG_KEY
 from six.moves import queue as queue_six
 from six.moves import xrange as xrange_six
 
@@ -134,7 +135,7 @@ class ClusterRpcProxyPool(object):
         self.pool_size = pool_size
         self.context_data = copy.deepcopy(context_data)
         self.timeout = timeout
-        self.heartbeat = self.config.get('HEARTBEAT', None)
+        self.heartbeat = self.config.get(HEARTBEAT_CONFIG_KEY)
         self._heartbeat_check_thread = None
         self.state = 'NOT_STARTED'
         self.queue = None
@@ -214,7 +215,7 @@ class ClusterRpcProxyPool(object):
         while self.heartbeat and self.state == 'STARTED':
             time.sleep(self.heartbeat/abs(RATE))
             _logger.debug("Heart beating all connections")
-            for i in xrange_six(self.pool_size):
+            for _ in xrange_six(self.pool_size):
                 ctx = None
                 try:
                     ctx = self.queue.get_nowait()
@@ -222,7 +223,6 @@ class ClusterRpcProxyPool(object):
                     break
                 else:
                     if ctx._rpc:
-                        _logger.debug("Heart beating ...")
                         try:
                             try:
                                 ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
@@ -231,11 +231,9 @@ class ClusterRpcProxyPool(object):
                             ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
 
                         except ConnectionError as exc:
-                            _logger.info("Heart beat Failed. Connection is broken due to: %s", str(exc))
+                            _logger.info("Heart beat failed. System will auto recover broken connection: %s", str(exc))
                             ctx.__del__()
                             ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
-                        else:
-                            _logger.debug("Heart beat OK")
                 finally:
                     if ctx is not None:
                         self.queue.put_nowait(ctx)
@@ -251,7 +249,7 @@ class ClusterRpcProxyPool(object):
 nameko_global_pools = None
 create_pool_lock = Lock()
 
-WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "AMQP_URI"'
+WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "%s"'%(AMQP_URI_CONFIG_KEY)
 
 
 def mergedicts(dict1, dict2):
@@ -300,8 +298,8 @@ def get_pool(pool_name=None):
                         raise ImproperlyConfigured(WRONG_CONFIG_MSG)
                     else:
                         if 'AMQP_URL' in NAMEKO_CONFIG['default']:  # compatible code to prevent typo mistake
-                            NAMEKO_CONFIG['default']['AMQP_URI'] = NAMEKO_CONFIG['default'].pop('AMQP_URL')
-                        if 'AMQP_URI' not in NAMEKO_CONFIG['default']:
+                            NAMEKO_CONFIG['default'][AMQP_URI_CONFIG_KEY] = NAMEKO_CONFIG['default'].pop('AMQP_URL')
+                        if AMQP_URI_CONFIG_KEY not in NAMEKO_CONFIG['default']:
                             raise ImproperlyConfigured(WRONG_CONFIG_MSG)
 
                     default_config = NAMEKO_CONFIG['default']
