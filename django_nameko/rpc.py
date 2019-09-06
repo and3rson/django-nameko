@@ -215,6 +215,7 @@ class ClusterRpcProxyPool(object):
         while self.heartbeat and self.state == 'STARTED':
             time.sleep(self.heartbeat/abs(RATE))
             count_ok = 0
+            cleared = list()
             for _ in xrange_six(self.pool_size):
                 ctx = None
                 try:
@@ -222,7 +223,7 @@ class ClusterRpcProxyPool(object):
                 except queue_six.Empty:
                     break
                 else:
-                    if ctx._rpc:
+                    if ctx._rpc and id(ctx) not in cleared:
                         try:
                             try:
                                 ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
@@ -238,6 +239,7 @@ class ClusterRpcProxyPool(object):
                 finally:
                     if ctx is not None:
                         self.queue.put_nowait(ctx)
+                        cleared.append(id(ctx))
             _logger.debug("Heart beat %d OK", count_ok)
 
     def __del__(self):
