@@ -93,6 +93,20 @@ rpc.mailer.send_mail(bar='foo')
 #     raise AttributeError(item)
 # AttributeError: mailer
 
+# New feature (from 0.7.0):
+# To dispatch event to any service event listener, for example you have this nameko service:
+from nameko.events import event_handler
+class EchoService(object):
+    name = 'echo'
+
+    @event_handler("echo", "ping")
+    def handle_event(self, payload):
+        print("service echo received:%s", payload)
+# You can sent an event signal to all service listener like this 
+from django_nameko import dispatch
+dispatch("echo", "ping", {"payload": {"data": 0}})
+
+
 ```
 
 # contribute

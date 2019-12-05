@@ -13,8 +13,8 @@ from amqp import AccessRefused
 from django.conf import settings
 from django.test.utils import override_settings
 from nameko.exceptions import MethodNotFound, UnknownService
-
-from django_nameko import destroy_pool, get_pool
+import tempfile
+from django_nameko import destroy_pool, get_pool, dispatch
 from nose import tools
 from tests.services import EchoService
 
@@ -137,3 +137,17 @@ class RealServiceTest(unittest.TestCase):
                 raise Exception("oops")
 
         destroy_pool()
+
+    @unittest.skipIf(sys.version_info > (3, 6), "currently eventlet is broken on python 3.7+")
+    @override_settings(NAMEKO_CONFIG=config)
+    def test_pool_dispatch_event_existing_service(self):
+        # create a tempfile
+        f = tempfile.NamedTemporaryFile(delete=False)
+        payload = dict(path=f.name)
+        f.close()
+        assert os.path.exists(f.name) is True
+        # dispatch the event with path of the temp file included in the payload
+        dispatch("echo", 'touch', payload)
+        time.sleep(2)  # wait for 2 second
+        # check file file has been removed by the listener service
+        assert os.path.exists(f.name) is False

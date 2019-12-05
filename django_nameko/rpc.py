@@ -19,6 +19,7 @@ from amqp.exceptions import ConnectionError  # heartbeat failed will raise this 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from nameko.standalone.rpc import ClusterRpcProxy
+from nameko.standalone.events import event_dispatcher
 from nameko.constants import AMQP_URI_CONFIG_KEY, HEARTBEAT_CONFIG_KEY
 from six.moves import queue as queue_six
 from six.moves import xrange as xrange_six
@@ -213,7 +214,7 @@ class ClusterRpcProxyPool(object):
     def heartbeat_check(self):
         RATE = 2
         while self.heartbeat and self.state == 'STARTED':
-            time.sleep(self.heartbeat/abs(RATE))
+            time.sleep(self.heartbeat / abs(RATE))
             count_ok = 0
             cleared = list()
             for _ in xrange_six(self.pool_size):
@@ -253,7 +254,8 @@ class ClusterRpcProxyPool(object):
 nameko_global_pools = None
 create_pool_lock = Lock()
 
-WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "%s"'%(AMQP_URI_CONFIG_KEY)
+WRONG_CONFIG_MSG = 'NAMEKO_CONFIG must be specified and should include at least "default" config with "%s"' % (
+    AMQP_URI_CONFIG_KEY)
 
 
 def mergedicts(dict1, dict2):
@@ -359,3 +361,33 @@ def destroy_pool():
     elif nameko_global_pools is not None:
         nameko_global_pools.stop()
     nameko_global_pools = None
+
+
+# setup a singleton event dispatcher for current worker
+nameko_event_dispatcher = None
+create_event_dispatcher_lock = Lock()
+
+
+def get_event_dispatcher():
+    global nameko_event_dispatcher
+    if not nameko_event_dispatcher:
+        NAMEKO_CONFIG = getattr(settings, 'NAMEKO_CONFIG', {})
+        if not NAMEKO_CONFIG:
+            raise ImproperlyConfigured('NAMEKO_CONFIG must be specified')
+        # Lazy instantiation, acquire lock first to prevent dupication init
+        create_event_dispatcher_lock.acquire()
+        _logger.debug("init nameko_event_dispatcher")
+        nameko_event_dispatcher = event_dispatcher(
+            NAMEKO_CONFIG['default'] if 'default' in NAMEKO_CONFIG else NAMEKO_CONFIG
+        )
+        # Finish instantiation, release lock
+        create_event_dispatcher_lock.release()
+    return nameko_event_dispatcher
+
+
+def dispatch(service_name, event_type, event_data):
+    """ Dispatch an event claiming to originate from `service_name` with
+    the given `event_type` and `event_data`.
+    """
+    _dispatch = get_event_dispatcher()
+    return _dispatch(service_name, event_type, event_data)
