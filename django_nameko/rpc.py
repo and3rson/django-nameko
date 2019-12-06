@@ -375,13 +375,13 @@ def get_event_dispatcher():
         if not NAMEKO_CONFIG:
             raise ImproperlyConfigured('NAMEKO_CONFIG must be specified')
         # Lazy instantiation, acquire lock first to prevent dupication init
-        create_event_dispatcher_lock.acquire()
-        _logger.debug("init nameko_event_dispatcher")
-        nameko_event_dispatcher = event_dispatcher(
-            NAMEKO_CONFIG['default'] if 'default' in NAMEKO_CONFIG else NAMEKO_CONFIG
-        )
-        # Finish instantiation, release lock
-        create_event_dispatcher_lock.release()
+        with create_event_dispatcher_lock:
+            if not nameko_event_dispatcher:  # double check inside lock is importance
+                # init nameko_event_dispatcher
+                nameko_event_dispatcher = event_dispatcher(
+                    NAMEKO_CONFIG['default'] if 'default' in NAMEKO_CONFIG else NAMEKO_CONFIG
+                )
+            # Finish instantiation, lock will be released automaticaly when exit this block
     return nameko_event_dispatcher
 
 
