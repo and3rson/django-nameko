@@ -222,7 +222,7 @@ class ClusterRpcProxyPool(object):
                 ctx = None
                 try:
                     ctx = self.queue.get_nowait()
-                except queue_six.Empty:
+                except (queue_six.Empty, AttributeError):
                     break
                 else:
                     if ctx._rpc and id(ctx) not in cleared:
@@ -239,9 +239,11 @@ class ClusterRpcProxyPool(object):
                         else:
                             count_ok += 1
                 finally:
-                    if ctx is not None:
+                    if ctx is not None and self.queue is not None:
                         self.queue.put_nowait(ctx)
                         cleared.append(id(ctx))
+                    else:  # unable to put it back, probaly due to system exit so better just delete the connection
+                        ctx.__del__()
             _logger.debug("Heart beat %d OK", count_ok)
 
     def __del__(self):
@@ -363,7 +365,7 @@ def destroy_pool():
     elif nameko_global_pools is not None:
         nameko_global_pools.stop()
     nameko_global_pools = None
-
+    _logger.info("nameko_global_pools are destroyed")
 
 # setup a singleton event dispatcher for current worker
 nameko_event_dispatcher = None
