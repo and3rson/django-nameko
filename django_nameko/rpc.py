@@ -23,6 +23,7 @@ from nameko.standalone.events import event_dispatcher
 from nameko.constants import AMQP_URI_CONFIG_KEY, HEARTBEAT_CONFIG_KEY
 from six.moves import queue as queue_six
 from six.moves import xrange as xrange_six
+import atexit
 
 _logger = logging.getLogger(__name__)
 
@@ -353,6 +354,7 @@ def get_pool(pool_name=None):
     return _pool
 
 
+@atexit.register
 def destroy_pool():
     global nameko_global_pools
     if isinstance(nameko_global_pools, dict):
