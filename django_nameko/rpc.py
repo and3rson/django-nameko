@@ -23,6 +23,7 @@ from nameko.standalone.events import event_dispatcher
 from nameko.constants import AMQP_URI_CONFIG_KEY, HEARTBEAT_CONFIG_KEY
 from six.moves import queue as queue_six
 from six.moves import xrange as xrange_six
+import atexit
 
 _logger = logging.getLogger(__name__)
 
@@ -151,6 +152,7 @@ class ClusterRpcProxyPool(object):
         self.state = 'STARTED'
         if self.heartbeat:
             self._heartbeat_check_thread = Thread(target=self.heartbeat_check)
+            self._heartbeat_check_thread.daemon = True
             self._heartbeat_check_thread.start()
             _logger.debug("Heart beat check thread started")
 
@@ -221,10 +223,10 @@ class ClusterRpcProxyPool(object):
                 ctx = None
                 try:
                     ctx = self.queue.get_nowait()
-                except queue_six.Empty:
+                except (queue_six.Empty, AttributeError):
                     break
                 else:
-                    if ctx._rpc and id(ctx) not in cleared:
+                    if ctx and ctx._rpc and id(ctx) not in cleared:
                         try:
                             try:
                                 ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
@@ -238,9 +240,12 @@ class ClusterRpcProxyPool(object):
                         else:
                             count_ok += 1
                 finally:
-                    if ctx is not None:
+                    if ctx is not None and self.queue is not None:
                         self.queue.put_nowait(ctx)
                         cleared.append(id(ctx))
+                    elif ctx is not None:
+                        #  unable to put it back, probaly due to system exit so better just delete the connection
+                        ctx.__del__()
             _logger.debug("Heart beat %d OK", count_ok)
 
     def __del__(self):
@@ -353,6 +358,7 @@ def get_pool(pool_name=None):
     return _pool
 
 
+@atexit.register
 def destroy_pool():
     global nameko_global_pools
     if isinstance(nameko_global_pools, dict):
@@ -361,7 +367,7 @@ def destroy_pool():
     elif nameko_global_pools is not None:
         nameko_global_pools.stop()
     nameko_global_pools = None
-
+    _logger.info("nameko_global_pools are destroyed")
 
 # setup a singleton event dispatcher for current worker
 nameko_event_dispatcher = None
