@@ -225,7 +225,7 @@ class ClusterRpcProxyPool(object):
                 except (queue_six.Empty, AttributeError):
                     break
                 else:
-                    if ctx._rpc and id(ctx) not in cleared:
+                    if ctx and ctx._rpc and id(ctx) not in cleared:
                         try:
                             try:
                                 ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
@@ -242,7 +242,8 @@ class ClusterRpcProxyPool(object):
                     if ctx is not None and self.queue is not None:
                         self.queue.put_nowait(ctx)
                         cleared.append(id(ctx))
-                    else:  # unable to put it back, probaly due to system exit so better just delete the connection
+                    elif ctx is not None:
+                        #  unable to put it back, probaly due to system exit so better just delete the connection
                         ctx.__del__()
             _logger.debug("Heart beat %d OK", count_ok)
 
