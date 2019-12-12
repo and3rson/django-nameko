@@ -152,6 +152,7 @@ class ClusterRpcProxyPool(object):
         self.state = 'STARTED'
         if self.heartbeat:
             self._heartbeat_check_thread = Thread(target=self.heartbeat_check)
+            self._heartbeat_check_thread.daemon = True
             self._heartbeat_check_thread.start()
             _logger.debug("Heart beat check thread started")
 
