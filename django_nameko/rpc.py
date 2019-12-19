@@ -24,6 +24,7 @@ from nameko.constants import AMQP_URI_CONFIG_KEY, HEARTBEAT_CONFIG_KEY
 from six.moves import queue as queue_six
 from six.moves import xrange as xrange_six
 import atexit
+import math
 
 _logger = logging.getLogger(__name__)
 
@@ -214,38 +215,45 @@ class ClusterRpcProxyPool(object):
             _logger.debug("Heart beat check thread stopped")
 
     def heartbeat_check(self):
-        RATE = 2
+        RATE = 2 + math.log(self.heartbeat, 30) if self.heartbeat > 30 else 2.
+        MIN_SLEEP = 3  # better sleep between 3 seconds, if this loop is running too frequent it may affect performance
         while self.heartbeat and self.state == 'STARTED':
-            time.sleep(self.heartbeat / abs(RATE))
+            time.sleep(max(self.heartbeat / abs(RATE), MIN_SLEEP))
             count_ok = 0
-            cleared = list()
-            for _ in xrange_six(self.pool_size):
-                ctx = None
-                try:
-                    ctx = self.queue.get_nowait()
-                except (queue_six.Empty, AttributeError):
-                    break
-                else:
-                    if ctx and ctx._rpc and id(ctx) not in cleared:
-                        try:
+            cleared = set()
+            try:
+                for _ in xrange_six(self.pool_size):
+                    ctx = None
+                    try:
+                        ctx = self.queue.get_nowait()
+                    except (queue_six.Empty, AttributeError):
+                        break
+                    else:
+                        if ctx and ctx._rpc and id(ctx) not in cleared:
                             try:
-                                ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
-                            except socket.timeout:
-                                pass
-                            ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
-                        except (ConnectionError, socket.error) as exc:
-                            _logger.info("Heart beat failed. System will auto recover broken connection: %s", str(exc))
+                                try:
+                                    ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
+                                except socket.timeout:
+                                    pass
+                                ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
+                            except (ConnectionError, socket.error, IOError) as exc:
+                                _logger.info("Heart beat failed. System will discard broken connection and replenish "
+                                             "pool with a new connection, %s: %s",
+                                             type(exc).__name__, exc.args[0])
+                                ctx.__del__()
+                                ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
+                            else:
+                                count_ok += 1
+                    finally:
+                        if ctx is not None and self.queue is not None:
+                            self.queue.put_nowait(ctx)
+                            cleared.add(id(ctx))
+                        elif ctx is not None:
+                            #  unable to put it back, probaly due to system exit so better just delete the connection
                             ctx.__del__()
-                            ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
-                        else:
-                            count_ok += 1
-                finally:
-                    if ctx is not None and self.queue is not None:
-                        self.queue.put_nowait(ctx)
-                        cleared.append(id(ctx))
-                    elif ctx is not None:
-                        #  unable to put it back, probaly due to system exit so better just delete the connection
-                        ctx.__del__()
+            except Exception as exc:
+                _logger.error("%s: %s", type(exc).__name__, exc.args[0])
+                # just log the error out without raise to keep the heartbeat thread going
             _logger.debug("Heart beat %d OK", count_ok)
 
     def __del__(self):
@@ -368,6 +376,7 @@ def destroy_pool():
         nameko_global_pools.stop()
     nameko_global_pools = None
     _logger.info("nameko_global_pools are destroyed")
+
 
 # setup a singleton event dispatcher for current worker
 nameko_event_dispatcher = None
