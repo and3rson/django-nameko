@@ -237,7 +237,8 @@ class ClusterRpcProxyPool(object):
                                     pass
                                 ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
                             except (ConnectionError, socket.error, IOError) as exc:
-                                _logger.info("Heart beat failed. System will auto recover broken connection, %s: %s",
+                                _logger.info("Heart beat failed. System will discard broken connection and replenish "
+                                             "pool with a new connection, %s: %s",
                                              type(exc).__name__, exc.args[0])
                                 ctx.__del__()
                                 ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
