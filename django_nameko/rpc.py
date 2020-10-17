@@ -251,10 +251,10 @@ class ClusterRpcProxyPool(object):
                                 d = loop_count - count_ok
                                 if d > 0 and d % REPLIES_CLEAN_UP_CYCLE == 0:
                                     count_clean = 0
+                                    now = time.time()
                                     # perform cleanup on this RpcProxy connection replies
                                     for msg_correlation_id in ctx._rpc._reply_listener.queue_consumer.replies.keys():
                                         timestamp = replies_timestamp.get(msg_correlation_id)
-                                        now = time.time()
                                         if timestamp is None:
                                             replies_timestamp[msg_correlation_id] = now
                                         else:
@@ -263,6 +263,10 @@ class ClusterRpcProxyPool(object):
                                                 del ctx._rpc._reply_listener.queue_consumer.replies[msg_correlation_id]
                                                 del replies_timestamp[msg_correlation_id]
                                                 count_clean += 1
+                                    # clear timestamp of replies that probably has been picked up
+                                    for msg_correlation_id in replies_timestamp.keys():
+                                        if now - replies_timestamp[msg_correlation_id] > 2 * self.timeout:
+                                            del replies_timestamp[msg_correlation_id]
                                     _logger.debug("Perform cleanup remove %d message", count_clean)
                     finally:
                         if ctx is not None and self.queue is not None:
