@@ -263,10 +263,6 @@ class ClusterRpcProxyPool(object):
                                                 del ctx._rpc._reply_listener.queue_consumer.replies[msg_correlation_id]
                                                 del replies_timestamp[msg_correlation_id]
                                                 count_clean += 1
-                                    # clear timestamp of replies that probably has been picked up
-                                    for msg_correlation_id in replies_timestamp.keys():
-                                        if now - replies_timestamp[msg_correlation_id] > 2 * self.timeout:
-                                            del replies_timestamp[msg_correlation_id]
                                     _logger.debug("Perform cleanup remove %d message", count_clean)
                     finally:
                         if ctx is not None and self.queue is not None:
