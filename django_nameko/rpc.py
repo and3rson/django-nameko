@@ -217,6 +217,9 @@ class ClusterRpcProxyPool(object):
     def heartbeat_check(self):
         RATE = 2 + math.log(self.heartbeat, 30) if self.heartbeat > 30 else 2.
         MIN_SLEEP = 3  # better sleep between 3 seconds, if this loop is running too frequent it may affect performance
+        loop_count = 0
+        REPLIES_CLEAN_UP_CYCLE = 10  # how many loop cycle to perform replies clean up
+        replies_timestamp = {}  # hash of correlation_id of replies and its timestamp when first detected
         while self.heartbeat and self.state == 'STARTED':
             time.sleep(max(self.heartbeat / abs(RATE), MIN_SLEEP))
             count_ok = 0
@@ -244,6 +247,23 @@ class ClusterRpcProxyPool(object):
                                 ctx = ClusterRpcProxyPool.RpcContext(self, self.config)
                             else:
                                 count_ok += 1
+                                # this allow only one RPCProxy connection to be cleanup at a time
+                                d = loop_count - count_ok
+                                if d > 0 and d % REPLIES_CLEAN_UP_CYCLE == 0:
+                                    count_clean = 0
+                                    now = time.time()
+                                    # perform cleanup on this RpcProxy connection replies
+                                    for msg_correlation_id in ctx._rpc._reply_listener.queue_consumer.replies.keys():
+                                        timestamp = replies_timestamp.get(msg_correlation_id)
+                                        if timestamp is None:
+                                            replies_timestamp[msg_correlation_id] = now
+                                        else:
+                                            # clean up the reply if its has stay in replies
+                                            if now - timestamp > self.timeout:
+                                                del ctx._rpc._reply_listener.queue_consumer.replies[msg_correlation_id]
+                                                del replies_timestamp[msg_correlation_id]
+                                                count_clean += 1
+                                    _logger.debug("Perform cleanup remove %d message", count_clean)
                     finally:
                         if ctx is not None and self.queue is not None:
                             self.queue.put_nowait(ctx)
@@ -255,6 +275,7 @@ class ClusterRpcProxyPool(object):
                 _logger.error("%s: %s", type(exc).__name__, exc.args[0])
                 # just log the error out without raise to keep the heartbeat thread going
             _logger.debug("Heart beat %d OK", count_ok)
+            loop_count += 1
 
     def __del__(self):
         if self.state != 'STOPPED':
