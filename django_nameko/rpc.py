@@ -201,25 +201,18 @@ class ClusterRpcProxyPool(object):
         """ Stop queue and remove all connections from pool.
         """
         self.state = 'STOPPED'
-        stop_threads = list()
         if self.queue:
             while True:
                 try:
                     ctx = self.queue.get_nowait()
                     ctx.__del__()
-                    # stop proxy using thread to speed up
-                    t = Thread(target=ctx.__del__)
-                    t.start()
-                    stop_threads.append(t)
                 except queue_six.Empty:
                     break
             self.queue.queue.clear()
             self.queue = None
-            for t in stop_threads:
-                t.join()
-        if self._heartbeat_check_thread:
-            self._heartbeat_check_thread.join()
-            _logger.debug("Heart beat check thread stopped")
+        # if self._heartbeat_check_thread:
+        #     self._heartbeat_check_thread.join()
+        #     _logger.debug("Heart beat check thread stopped")
 
     def heartbeat_check(self):
         RATE = 2 + math.log(self.heartbeat, 30) if self.heartbeat > 30 else 2.
@@ -230,11 +223,13 @@ class ClusterRpcProxyPool(object):
         while self.heartbeat and self.state == 'STARTED':
             time.sleep(max(self.heartbeat / abs(RATE), MIN_SLEEP))
             if self.state == 'STOPPED':
-                break
+                return
             count_ok = 0
             cleared = set()
             try:
                 for _ in xrange_six(self.pool_size):
+                    if self.state == 'STOPPED':
+                        return
                     ctx = None
                     try:
                         ctx = self.queue.get_nowait()
@@ -263,6 +258,8 @@ class ClusterRpcProxyPool(object):
                                     now = time.time()
                                     # perform cleanup on this RpcProxy connection replies
                                     for msg_correlation_id in ctx._rpc._reply_listener.queue_consumer.replies.keys():
+                                        if self.state == 'STOPPED':
+                                            return
                                         timestamp = replies_timestamp.get(msg_correlation_id)
                                         if timestamp is None:
                                             replies_timestamp[msg_correlation_id] = now
