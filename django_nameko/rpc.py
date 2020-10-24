@@ -220,10 +220,13 @@ class ClusterRpcProxyPool(object):
         loop_count = 0
         REPLIES_CLEAN_UP_CYCLE = 10  # how many loop cycle to perform replies clean up
         replies_timestamp = {}  # hash of correlation_id of replies and its timestamp when first detected
+        sleep_duration = max(self.heartbeat / abs(RATE), MIN_SLEEP)
         while self.heartbeat and self.state == 'STARTED':
-            time.sleep(max(self.heartbeat / abs(RATE), MIN_SLEEP))
-            if self.state == 'STOPPED':
-                return
+            for i in range(10):
+                # breakdown sleep in smaller step
+                time.sleep(sleep_duration/10.0)
+                if self.state == 'STOPPED':
+                    return
             count_ok = 0
             cleared = set()
             try:
@@ -242,7 +245,7 @@ class ClusterRpcProxyPool(object):
                                     ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
                                 except socket.timeout:
                                     pass
-                                ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
+                                ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()
                             except (ConnectionError, socket.error, IOError) as exc:
                                 _logger.info("Heart beat failed. System will discard broken connection and replenish "
                                              "pool with a new connection, %s: %s",
