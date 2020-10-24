@@ -200,16 +200,23 @@ class ClusterRpcProxyPool(object):
     def stop(self):
         """ Stop queue and remove all connections from pool.
         """
+        self.state = 'STOPPED'
+        stop_threads = list()
         if self.queue:
             while True:
                 try:
                     ctx = self.queue.get_nowait()
                     ctx.__del__()
+                    # stop proxy using thread to speed up
+                    t = Thread(target=ctx.__del__)
+                    t.start()
+                    stop_threads.append(t)
                 except queue_six.Empty:
                     break
             self.queue.queue.clear()
             self.queue = None
-        self.state = 'STOPPED'
+            for t in stop_threads:
+                t.join()
         if self._heartbeat_check_thread:
             self._heartbeat_check_thread.join()
             _logger.debug("Heart beat check thread stopped")
@@ -222,6 +229,8 @@ class ClusterRpcProxyPool(object):
         replies_timestamp = {}  # hash of correlation_id of replies and its timestamp when first detected
         while self.heartbeat and self.state == 'STARTED':
             time.sleep(max(self.heartbeat / abs(RATE), MIN_SLEEP))
+            if self.state == 'STOPPED':
+                break
             count_ok = 0
             cleared = set()
             try:
