@@ -200,6 +200,7 @@ class ClusterRpcProxyPool(object):
     def stop(self):
         """ Stop queue and remove all connections from pool.
         """
+        self.state = 'STOPPED'
         if self.queue:
             while True:
                 try:
@@ -209,10 +210,9 @@ class ClusterRpcProxyPool(object):
                     break
             self.queue.queue.clear()
             self.queue = None
-        self.state = 'STOPPED'
-        if self._heartbeat_check_thread:
-            self._heartbeat_check_thread.join()
-            _logger.debug("Heart beat check thread stopped")
+        # if self._heartbeat_check_thread:
+        #     self._heartbeat_check_thread.join()
+        #     _logger.debug("Heart beat check thread stopped")
 
     def heartbeat_check(self):
         RATE = 2 + math.log(self.heartbeat, 30) if self.heartbeat > 30 else 2.
@@ -220,12 +220,19 @@ class ClusterRpcProxyPool(object):
         loop_count = 0
         REPLIES_CLEAN_UP_CYCLE = 10  # how many loop cycle to perform replies clean up
         replies_timestamp = {}  # hash of correlation_id of replies and its timestamp when first detected
+        sleep_duration = max(self.heartbeat / abs(RATE), MIN_SLEEP)
         while self.heartbeat and self.state == 'STARTED':
-            time.sleep(max(self.heartbeat / abs(RATE), MIN_SLEEP))
+            for i in range(10):
+                # breakdown sleep in smaller step
+                time.sleep(sleep_duration/10.0)
+                if self.state == 'STOPPED':
+                    return
             count_ok = 0
             cleared = set()
             try:
                 for _ in xrange_six(self.pool_size):
+                    if self.state == 'STOPPED':
+                        return
                     ctx = None
                     try:
                         ctx = self.queue.get_nowait()
@@ -238,7 +245,7 @@ class ClusterRpcProxyPool(object):
                                     ctx._rpc._reply_listener.queue_consumer.connection.drain_events(timeout=0.1)
                                 except socket.timeout:
                                     pass
-                                ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()  # rate=RATE
+                                ctx._rpc._reply_listener.queue_consumer.connection.heartbeat_check()
                             except (ConnectionError, socket.error, IOError) as exc:
                                 _logger.info("Heart beat failed. System will discard broken connection and replenish "
                                              "pool with a new connection, %s: %s",
@@ -254,6 +261,8 @@ class ClusterRpcProxyPool(object):
                                     now = time.time()
                                     # perform cleanup on this RpcProxy connection replies
                                     for msg_correlation_id in ctx._rpc._reply_listener.queue_consumer.replies.keys():
+                                        if self.state == 'STOPPED':
+                                            return
                                         timestamp = replies_timestamp.get(msg_correlation_id)
                                         if timestamp is None:
                                             replies_timestamp[msg_correlation_id] = now
