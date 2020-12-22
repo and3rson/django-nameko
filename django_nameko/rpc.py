@@ -110,13 +110,13 @@ class ClusterRpcProxyPool(object):
                     if self._rpc._worker_ctx.data is not None:
                         if self._pool.context_data is None:
                             # clear all key since there is no.pool context_data
-                            for key in self._rpc._worker_ctx.data.keys():
+                            for key in list(self._rpc._worker_ctx.data.keys()):
                                 del self._rpc._worker_ctx.data[key]
                         elif len(self._rpc._worker_ctx.data) != len(self._pool.context_data) \
                                 or self._rpc._worker_ctx.data != self._pool.context_data:
                             # ensure that worker_ctx.data is revert back to original
                             # pool.context_data when exit of block
-                            for key in self._rpc._worker_ctx.data.keys():
+                            for key in list(self._rpc._worker_ctx.data.keys()):
                                 if key not in self._pool.context_data:
                                     del self._rpc._worker_ctx.data[key]
                                 else:
@@ -260,7 +260,7 @@ class ClusterRpcProxyPool(object):
                                     count_clean = 0
                                     now = time.time()
                                     # perform cleanup on this RpcProxy connection replies
-                                    for msg_correlation_id in ctx._rpc._reply_listener.queue_consumer.replies.keys():
+                                    for msg_correlation_id in list(ctx._rpc._reply_listener.queue_consumer.replies.keys()):
                                         if self.state == 'STOPPED':
                                             return
                                         timestamp = replies_timestamp.get(msg_correlation_id)
