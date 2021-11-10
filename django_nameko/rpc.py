@@ -29,17 +29,13 @@ import math
 
 _logger = logging.getLogger(__name__)
 
-_nameko_version = ''
+_nameko_version_major = 2
 if sys.version_info >= (3, 8):
     from importlib.metadata import version
-    _nameko_version = version('nameko')
-elif sys.version_info >= (3, 8):
+    _nameko_version_major = int(version('nameko').split('.')[0])
+else:
     import pkg_resources
-    _nameko_version = pkg_resources.get_distribution('nameko').version
-
-# objectify it
-from packaging.version import Version
-_nameko_version = Version(_nameko_version)
+    _nameko_version_major = int(pkg_resources.get_distribution('nameko').version.split('.')[0])
 
 
 class ClusterRpcProxyPool(object):
@@ -68,7 +64,7 @@ class ClusterRpcProxyPool(object):
     class RpcContext(object):
         def __init__(self, pool, config):
             self._pool = weakref.proxy(pool)
-            if _nameko_version.major == 3:
+            if _nameko_version_major == 3:
                 # config is done differently in nameko 3
                 from nameko import config as _nameko3_config
                 _nameko3_config.setup(config)
@@ -129,7 +125,7 @@ class ClusterRpcProxyPool(object):
                     if self._rpc._worker_ctx.data is not None:
                         if self._pool.context_data is None:
                             # clear all key since there is no.pool context_data
-                            if _nameko_version.major == 3:
+                            if _nameko_version_major == 3:
                                 for key in list(self._rpc._worker_ctx.context_data.keys()):
                                     del self._rpc._worker_ctx.context_data[key]
                             else:
@@ -446,7 +442,7 @@ def get_event_dispatcher():
         with create_event_dispatcher_lock:
             if not nameko_event_dispatcher:  # double check inside lock is importance
                 # init nameko_event_dispatcher
-                if _nameko_version.major == 3:
+                if _nameko_version_major == 3:
                     nameko_event_dispatcher = event_dispatcher(config=
                         NAMEKO_CONFIG['default'] if 'default' in NAMEKO_CONFIG else NAMEKO_CONFIG
                     )
