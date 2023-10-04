@@ -15,6 +15,7 @@ import weakref
 from threading import Lock, Thread
 import time
 import socket
+import sys
 from amqp.exceptions import ConnectionError  # heartbeat failed will raise this error: ConnectionForced
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -27,6 +28,14 @@ import atexit
 import math
 
 _logger = logging.getLogger(__name__)
+
+_nameko_version_major = 2
+if sys.version_info >= (3, 8):
+    from importlib.metadata import version
+    _nameko_version_major = int(version('nameko').split('.')[0])
+else:
+    import pkg_resources
+    _nameko_version_major = int(pkg_resources.get_distribution('nameko').version.split('.')[0])
 
 
 class ClusterRpcProxyPool(object):
@@ -55,7 +64,13 @@ class ClusterRpcProxyPool(object):
     class RpcContext(object):
         def __init__(self, pool, config):
             self._pool = weakref.proxy(pool)
-            self._proxy = ClusterRpcProxy(config, context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
+            if _nameko_version_major == 3:
+                # config is done differently in nameko 3
+                from nameko import config as _nameko3_config
+                _nameko3_config.setup(config)
+                self._proxy = ClusterRpcProxy(context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
+            else:
+                self._proxy = ClusterRpcProxy(config, context_data=copy.deepcopy(pool.context_data), timeout=pool.timeout)
             self._rpc = None
             self._enable_rpc_call = False
 
@@ -110,8 +125,12 @@ class ClusterRpcProxyPool(object):
                     if self._rpc._worker_ctx.data is not None:
                         if self._pool.context_data is None:
                             # clear all key since there is no.pool context_data
-                            for key in list(self._rpc._worker_ctx.data.keys()):
-                                del self._rpc._worker_ctx.data[key]
+                            if _nameko_version_major == 3:
+                                for key in list(self._rpc._worker_ctx.context_data.keys()):
+                                    del self._rpc._worker_ctx.context_data[key]
+                            else:
+                                for key in list(self._rpc._worker_ctx.data.keys()):
+                                    del self._rpc._worker_ctx.data[key]
                         elif len(self._rpc._worker_ctx.data) != len(self._pool.context_data) \
                                 or self._rpc._worker_ctx.data != self._pool.context_data:
                             # ensure that worker_ctx.data is revert back to original
@@ -419,14 +438,19 @@ def get_event_dispatcher():
         NAMEKO_CONFIG = getattr(settings, 'NAMEKO_CONFIG', {})
         if not NAMEKO_CONFIG:
             raise ImproperlyConfigured('NAMEKO_CONFIG must be specified')
-        # Lazy instantiation, acquire lock first to prevent dupication init
+        # Lazy instantiation, acquire lock first to prevent duplication init
         with create_event_dispatcher_lock:
             if not nameko_event_dispatcher:  # double check inside lock is importance
                 # init nameko_event_dispatcher
-                nameko_event_dispatcher = event_dispatcher(
-                    NAMEKO_CONFIG['default'] if 'default' in NAMEKO_CONFIG else NAMEKO_CONFIG
-                )
-            # Finish instantiation, lock will be released automaticaly when exit this block
+                if _nameko_version_major == 3:
+                    nameko_event_dispatcher = event_dispatcher(config=
+                        NAMEKO_CONFIG['default'] if 'default' in NAMEKO_CONFIG else NAMEKO_CONFIG
+                    )
+                else:
+                    nameko_event_dispatcher = event_dispatcher(
+                        NAMEKO_CONFIG['default'] if 'default' in NAMEKO_CONFIG else NAMEKO_CONFIG
+                    )
+            # Finish instantiation, lock will be released automatically when exit this block
     return nameko_event_dispatcher
 
 
